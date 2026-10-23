@@ -176,3 +176,11 @@ Changes made because of those measurements (all tested, **147 tests / 1,170 asse
 
 Honest summary: Ollama is installed and works as a free, private draft polisher behind guardrails. On this laptop it is slow (31–85 s per draft) and too small to be trusted for research. On the planned 8 GB VPS the same setup runs unattended; a Gemini free-tier key remains the better free choice for research quality.
 Guarded live re-test (same afternoon): `qwen2.5:3b` draft accepted on the 2nd try (16 s once the model was warm; first call 75 s includes loading) with both facts and the exact call-to-action kept; `qwen2.5:1.5b` was rejected twice (changed the ask) and the template was used. The accepted 3b draft had dropped the signature, so `aiPolish` now appends the sender signature whenever a model omits it (test added; 147 tests / 1,171 assertions).
+
+### 5e. 23 Oct 2026, evening: self-service registration page
+
+- `GET/POST /register` (`AuthController::showRegister/register`, throttled 10/min), view `auth/register.blade.php` in the login page's style. Validation: name, unique e-mail (normalised to lower case before the check), optional phone, password ≥ 8 with a letter and a number + confirmation, lawful-use checkbox. The new user is logged in and sent to the dashboard; audit log `user_registered`.
+- Roles: a fresh installation (no users) makes the first account **admin**; every later account gets `LEADPILOT_REGISTRATION_ROLE` (default `sales`: works leads, cannot change outreach/automation settings). `LEADPILOT_ALLOW_REGISTRATION=false` turns the page off (404) and hides the link.
+- Login page hardening for the live server: the pre-filled `admin@leadpilot.test / password123` and the "Quick Login Credentials" buttons (and their script) now render only when `APP_ENV=local`.
+- Tests: `tests/Feature/RegistrationTest.php` (5). Full suite **152 tests / 1,205 assertions**.
+- Still the owner's job on the live server: the seeded demo users `sales@leadpilot.test` and `sarah@leadpilot.test` keep the password `password123` wherever the demo seeder ran — deactivate them or change their passwords (Settings → Users) before the site is public.

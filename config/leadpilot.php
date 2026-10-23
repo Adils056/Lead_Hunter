@@ -219,6 +219,13 @@ return [
     // Needs outbound TCP 25; when the network blocks it (most home ISPs) the check reports "not probed" and falls back to MX.
     'smtp_probe' => (bool) env('LEADPILOT_SMTP_PROBE', true),
 
+    // Self-service registration. New accounts get `default_role` (sales: can work leads, cannot change outreach
+    // settings). The very first account of an empty installation becomes admin so a fresh server can be set up.
+    'registration' => [
+        'enabled' => (bool) env('LEADPILOT_ALLOW_REGISTRATION', true),
+        'default_role' => env('LEADPILOT_REGISTRATION_ROLE', 'sales'),
+    ],
+
     'free_mail_domains' => [
         'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com', 'icloud.com', 'aol.com',
         'proton.me', 'protonmail.com', 'gmx.com', 'yandex.com', 'mail.com', 'msn.com', 'ymail.com',

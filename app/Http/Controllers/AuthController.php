@@ -95,4 +95,57 @@ class AuthController extends Controller
 
         return back()->with('success', 'Profile updated successfully.');
     }
+
+    // ------------------------------------------------------------ self-service registration
+
+    protected function registrationEnabled(): bool
+    {
+        return (bool) config('leadpilot.registration.enabled', true);
+    }
+
+    public function showRegister()
+    {
+        if (Auth::check()) {
+            return redirect()->route('dashboard');
+        }
+        abort_unless($this->registrationEnabled(), 404);
+
+        return view('auth.register', ['firstUser' => User::count() === 0]);
+    }
+
+    public function register(Request $request)
+    {
+        abort_unless($this->registrationEnabled(), 404);
+        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email:rfc', 'max:255', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'password' => ['required', 'string', 'min:8', 'confirmed', 'regex:/[A-Za-z]/', 'regex:/\d/'],
+            'terms' => ['accepted'],
+        ], [
+            'password.regex' => 'The password must contain at least one letter and one number.',
+            'terms.accepted' => 'Please confirm that you will use LeadPilot for lawful B2B outreach.',
+        ]);
+
+        // A fresh installation has no users: the first account must be able to configure everything.
+        $role = User::count() === 0 ? 'admin' : (string) config('leadpilot.registration.default_role', 'sales');
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => strtolower(trim($data['email'])),
+            'phone' => $data['phone'] ?? null,
+            'password' => $data['password'], // hashed by the model cast
+            'role' => $role,
+            'is_active' => true,
+            'last_login_at' => now(),
+        ]);
+        AuditLog::record('user_registered', $user);
+
+        Auth::login($user, true);
+        $request->session()->regenerate();
+
+        return redirect()->route('dashboard')->with('success', "Welcome, {$user->name}! Your account is ready.");
+    }
 }

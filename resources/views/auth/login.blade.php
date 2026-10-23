@@ -101,7 +101,7 @@
             <label class="form-label small fw-semibold text-secondary">Work Email</label>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-envelope"></i></span>
-                <input type="email" name="email" id="email" class="form-control border-start-0" placeholder="name@company.com" value="{{ old('email', 'admin@leadpilot.test') }}" required autofocus>
+                <input type="email" name="email" id="email" class="form-control border-start-0" placeholder="name@company.com" value="{{ old('email', app()->environment('local') ? 'admin@leadpilot.test' : '') }}" required autofocus>
             </div>
         </div>
 
@@ -111,7 +111,7 @@
             </div>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
-                <input type="password" name="password" id="password" class="form-control border-start-0" placeholder="••••••••" value="password123" required>
+                <input type="password" name="password" id="password" class="form-control border-start-0" placeholder="••••••••" @if(app()->environment('local')) value="password123" @endif required>
             </div>
         </div>
 
@@ -127,8 +127,15 @@
         </button>
     </form>
 
+    @if(config('leadpilot.registration.enabled', true))
+    <div class="text-center small text-muted mb-3">
+        New here? <a href="{{ route('register') }}" class="fw-semibold text-decoration-none">Create an account</a>
+    </div>
+    @endif
+
+    @if(app()->environment('local'))
     <div class="pt-3 border-top">
-        <div class="text-center text-muted small mb-2 fw-semibold">Quick Login Credentials</div>
+        <div class="text-center text-muted small mb-2 fw-semibold">Quick Login Credentials (local only)</div>
         <div class="row g-2">
             <div class="col-6">
                 <div class="credential-pill" onclick="fillCreds('admin@leadpilot.test')">
@@ -144,14 +151,17 @@
             </div>
         </div>
     </div>
+    @endif
 </div>
 
+@if(app()->environment('local'))
 <script>
 function fillCreds(email) {
     document.getElementById('email').value = email;
     document.getElementById('password').value = 'password123';
 }
 </script>
+@endif
 
 </body>
 </html>

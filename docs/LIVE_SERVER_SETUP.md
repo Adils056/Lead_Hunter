@@ -91,7 +91,7 @@ Each deploy afterwards: `git pull && composer install --no-dev && npm run build 
 3. `php artisan leadpilot:validate-live --pilot-to=<your address>` — pilot PASS; sources LIVE (Overture, OSM, Wikidata, tenders).
 4. Port 25: `php artisan tinker --execute="dump(app(App\Services\EmailVerificationService::class)->smtpProbe('postmaster@gmail.com', ['gmail-smtp-in.l.google.com']))"`
    → `result` must not be `blocked`. If it is, open a ticket with the VPS provider; until then verification is MX-level (still honest).
-5. Create the owner admin user (Settings → Users), set `controlled_pilot_recipient` to the owner's address, change the temporary password.
+5. Create the owner admin account: on an empty database open `/register` (the first account becomes admin); otherwise Settings → Users. Set `controlled_pilot_recipient` to the owner's address. Deactivate or re-password the demo users `sales@leadpilot.test` / `sarah@leadpilot.test` if the demo seeder ever ran. Set `LEADPILOT_ALLOW_REGISTRATION=false` once your team has accounts.
 6. Settings → Outreach Engine: minimum score 65, daily cap **10 for week 1** (then 25), sending window 09:00–17:00 Asia/Karachi, allow shared inbox **on**,
    mode **approval** for the first 20 e-mails (you click send), then **live**.
 7. ICPs: keep #1 (clinics Islamabad/Rawalpindi, Overture+OSM); add #3 "Pakistan exporters & logistics" (business type SMB, no cities, niches textile/logistics/pharma/food → Wikidata);

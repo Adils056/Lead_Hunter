@@ -21,6 +21,9 @@ Route::get('/', function () {
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+// Self-service registration (LEADPILOT_ALLOW_REGISTRATION; the first account of a fresh install becomes admin)
+Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
+Route::post('/register', [AuthController::class, 'register'])->name('register.post')->middleware('throttle:10,1');
 
 // Public Unsubscribe Endpoint
 Route::match(['get', 'post'], '/unsubscribe', [CampaignController::class, 'unsubscribe'])->name('campaigns.unsubscribe')->middleware('throttle:30,1');
