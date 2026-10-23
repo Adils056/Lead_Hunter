@@ -65,6 +65,7 @@ class OutreachAutomationController extends Controller
             'min_evidence_confidence' => ['required', 'integer', 'min:40', 'max:100'],
             'require_verified_email' => ['nullable', 'boolean'],
             'allow_shared_inbox' => ['nullable', 'boolean'],
+            'allow_mx_only' => ['nullable', 'boolean'],
             'max_daily_sends' => ['required', 'integer', 'min:1', 'max:500'],
             'max_sends_per_recipient' => ['required', 'integer', 'min:1', 'max:5'],
             'sending_window_start' => ['required', 'string'],
@@ -80,6 +81,7 @@ class OutreachAutomationController extends Controller
         $settings = OutreachSetting::current();
         $data['require_verified_email'] = $request->has('require_verified_email');
         $data['allow_shared_inbox'] = $request->has('allow_shared_inbox');
+        $data['allow_mx_only'] = $request->has('allow_mx_only');
         $data['allowed_countries'] = $request->input('allowed_countries', []);
         $data['approved_services'] = $request->input('approved_services', []);
 

@@ -57,7 +57,9 @@ class DashboardController extends Controller
         $qualifiedLeads = (clone $leadQuery)->where('overall_score', '>=', 60)->count();
         $highPriorityLeads = (clone $leadQuery)->where('overall_score', '>=', \App\Support\ScoreBands::high())->count();
         $leadsAwaitingReview = (clone $leadQuery)->whereIn('lifecycle_stage', ['ready_for_review', 'researching'])->count();
-        $verifiedEmails = (clone $leadQuery)->where('email_verification_status', 'verified')->count();
+        // Only mailbox-level proof (SMTP probe or Hunter) counts; MX-only addresses are shown separately.
+        $verifiedEmails = (clone $leadQuery)->where('email_verification_status', \App\Support\EmailStatus::VERIFIED)->count();
+        $mxOnlyEmails = (clone $leadQuery)->where('email_verification_status', \App\Support\EmailStatus::MX_ONLY)->count();
 
         // Campaign & Delivery Metrics
         $runningCampaigns = Campaign::where('status', 'running')->where('emergency_stopped', false)->count();
@@ -141,6 +143,7 @@ class DashboardController extends Controller
             'highPriorityLeads',
             'leadsAwaitingReview',
             'verifiedEmails',
+            'mxOnlyEmails',
             'runningCampaigns',
             'emailsSent',
             'emailsDelivered',

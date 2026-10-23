@@ -141,3 +141,21 @@ Implemented and tested (157 tests / 1,248 assertions green; `tests/Feature/Phase
 Deploy note for the live server: after `git pull`, set `LEADPILOT_WEBHOOK_SECRET` only if a provider actually posts webhooks (otherwise all webhook calls are rejected, which is the safe default), then `php artisan config:cache`. Verify: `curl -sI https://hunter.eziline.net/api/v1/leads` must return 401.
 
 Not changed in Phase 0 (needs the owner's decision, see P1-16): self-registration stays enabled and new accounts stay active immediately; every active user still sees all leads.
+
+---
+
+## Status update — Phase 1 "verification truth" shipped (commit after the Phase 0 hotfix)
+
+167 tests / 1,302 assertions green (`tests/Feature/EmailVerificationTruthTest.php` + updated `FreeAlternativesTest`).
+
+| Finding | Change |
+|---|---|
+| P0-3 MX-only = verified | New status `mx_only` (score 50; 40 for free mailboxes). Never sendable unless Settings → Outreach Engine → "Also allow MX only" is on (default off). |
+| P1-6 vocabulary | `App\Support\EmailStatus`: one list (`verified`, `catch_all`, `risky`, `mx_only`, `unknown`, `invalid`, `unverified`), `isSendable()`, labels and badge colours. Read by the eligibility gate, win ladder, scoring, campaign audience, sales assistant, `Lead::hasSendableEmail()`, all lead/company/ladder views and the lead filter. The free probe's catch-all is now `catch_all` (was `risky`). |
+| P1-5 Hunter mapping | Maps `data.status` (`valid`/`invalid`/`accept_all`/`webmail`/`disposable`/`unknown`), falls back to the deprecated `result`; booleans default false; cost recorded through `CostLedger` (2 ¢) so budgets count it. |
+| Email waterfall | cache → free SMTP probe → Hunter. Hunter is called only when the probe could not reach the mailbox (`mx_only`/`unknown`), Hunter is configured, `LEADPILOT_HUNTER_ESCALATION` is on and `BudgetGuard` allows it. Each verification stores its steps in `provider_response.waterfall`. Inconclusive results are cached 24 h (proven ones 30 days) so they get re-probed. Address *finding* is unchanged: website crawl only, no pattern guessing. |
+| Port-25 flag | One refusing domain no longer marks the network as blocked. Blocked only when the canary MX (`LEADPILOT_SMTP_CANARY`) also refuses, or, with no canary, after 3 distinct domains refuse within an hour. A single refusal returns `unreachable` → `mx_only`. |
+| Re-verify existing leads | Migration `2026_10_24_000001` relabels past free-check results (`verified` without an SMTP answer → `mx_only`; `risky` with one → `catch_all`) and moves leads to their latest status. `php artisan leadpilot:reverify-emails [--status=mx_only] [--limit=200]` re-probes them; the autopilot also retries `mx_only`/`unknown` leads after 24 h. Manual "Verify email" bypasses the cache. |
+| Dashboard | "Verified Emails" counts only `verified` (SMTP or Hunter proof) and shows the MX-only count separately. |
+
+Deploy note: `git pull && php artisan migrate --force && php artisan config:cache`, then `php artisan leadpilot:reverify-emails`. On a host without outbound port 25 these leads stay `mx_only` (not sendable) until Hunter is given a budget or the owner switches "Also allow MX only" on.

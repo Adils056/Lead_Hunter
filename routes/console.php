@@ -333,6 +333,26 @@ Artisan::command('leadpilot:places-purge {--days= : Override retention days}', f
 })->purpose('Enforce Google Places content retention');
 
 Schedule::command('leadpilot:places-purge')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
+
+Artisan::command('leadpilot:reverify-emails {--status=mx_only : Comma-separated statuses to re-check} {--limit=200}', function (\App\Services\EmailVerificationService $verifier) {
+    // P0-3 follow-up: re-runs the verification waterfall (cache bypassed) for leads whose mailbox was never proven.
+    $statuses = array_values(array_intersect(array_map('trim', explode(',', (string) $this->option('status'))), \App\Support\EmailStatus::ALL));
+    if ($statuses === []) {
+        $this->error('No valid status given. Use: ' . implode(', ', \App\Support\EmailStatus::ALL));
+
+        return 1;
+    }
+    $leads = \App\Models\Lead::whereIn('email_verification_status', $statuses)->whereNotNull('email')->where('email', '!=', '')
+        ->orderBy('last_verified_at')->limit(max(1, (int) $this->option('limit')))->get();
+    $tally = [];
+    foreach ($leads as $lead) {
+        $status = $verifier->verifyEmail($lead->email, $lead, null, fresh: true)['status'];
+        $tally[$status] = ($tally[$status] ?? 0) + 1;
+    }
+    $this->info('Re-verified ' . $leads->count() . ' lead(s): ' . ($tally ? collect($tally)->map(fn ($n, $s) => \App\Support\EmailStatus::label($s) . " {$n}")->implode(', ') : 'nothing to do') . '.');
+
+    return 0;
+})->purpose('Re-run e-mail verification for leads whose mailbox was never proven (default: MX-only)');
 // v4: replaced by the autopilot discovery step (learns which ICP x source to search).
 // Schedule::command('leadpilot:hunt')->weeklyOn(1, '06:00')->withoutOverlapping();
 

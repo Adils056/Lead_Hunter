@@ -7,11 +7,10 @@ use App\Models\Lead;
 use App\Services\Audit\WebsiteAuditService;
 use App\Services\EmailVerificationService;
 use App\Services\Hunting\LeadHuntService;
-use App\Services\Integrations\BudgetGuard;
-use App\Services\Integrations\ProviderRegistry;
 use App\Services\LeadScoringService;
 use App\Services\Mail\ReplySyncService;
 use App\Services\Outreach\SequenceEngine;
+use App\Support\EmailStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -94,10 +93,18 @@ class AutopilotRunner
                     }
                 }
                 if ($policy->isAutomatic('enrichment.verify_email')) {
-                    $hunterOk = app(ProviderRegistry::class)->isConfigured('hunter') && app(BudgetGuard::class)->allows('hunter', 2);
-                    $leads = Lead::where('contact_status', 'identified')->whereNotNull('email')->where('email_verification_status', 'unverified')->limit(10)->get();
+                    // Free-first waterfall: the SMTP probe always runs; Hunter is used inside the service only when
+                    // the probe could not reach the mailbox and the budget allows it. MX-only results are retried
+                    // once the inconclusive cache window has passed.
+                    $recheckBefore = now()->subHours((int) config('leadpilot.email_verification.inconclusive_cache_hours', 24));
+                    $leads = Lead::where('contact_status', 'identified')->whereNotNull('email')
+                        ->where(fn ($q) => $q->where('email_verification_status', EmailStatus::UNVERIFIED)
+                            ->orWhere(fn ($q) => $q->whereIn('email_verification_status', [EmailStatus::MX_ONLY, EmailStatus::UNKNOWN])
+                                ->where(fn ($q) => $q->whereNull('last_verified_at')->orWhere('last_verified_at', '<', $recheckBefore))))
+                        ->orderByRaw("CASE WHEN email_verification_status = 'unverified' THEN 0 ELSE 1 END")
+                        ->limit(10)->get();
                     foreach ($leads as $l) {
-                        if (!$dryRun && ($hunterOk || !app(ProviderRegistry::class)->isConfigured('hunter'))) {
+                        if (!$dryRun) {
                             app(EmailVerificationService::class)->verifyEmail($l->email, $l);
                             $res['verified']++;
                         }

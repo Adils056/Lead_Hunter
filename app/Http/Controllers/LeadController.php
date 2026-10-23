@@ -258,10 +258,10 @@ class LeadController extends Controller
             return back()->with('error', 'Cannot verify: lead does not have an email address.');
         }
 
-        $result = $this->verificationService->verifyEmail($lead->email, $lead, Auth::id());
+        $result = $this->verificationService->verifyEmail($lead->email, $lead, Auth::id(), fresh: true);
         $this->scoringService->evaluateLead($lead, Auth::id());
 
-        return back()->with('success', "Email verification complete: Status is '{$result['status']}' (Provider: {$result['provider']}). Lead score updated.");
+        return back()->with('success', "Email verification complete: status is '" . \App\Support\EmailStatus::label($result['status']) . "' (provider: {$result['provider']}). Lead score updated.");
     }
 
     public function showImport()

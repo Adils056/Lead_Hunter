@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\LeadScore;
 use App\Models\ScoringSetting;
 use App\Services\Sales\OfferRecommender;
+use App\Support\EmailStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 
@@ -146,10 +147,10 @@ class LeadScoringService
 
         // 8. Contact verification & source trust
         $v = match ($lead->email_verification_status) {
-            'verified' => 0.6, 'risky', 'catch_all' => 0.3, default => 0,
+            EmailStatus::VERIFIED => 0.6, EmailStatus::RISKY, EmailStatus::CATCH_ALL => 0.3, EmailStatus::MX_ONLY => 0.1, default => 0,
         };
         $v += (!empty($lead->source_name) && $lead->source_name !== 'Manual Entry') ? 0.4 : 0.2;
-        $f['contact_verification'] = [min(1, $v), "Email {$lead->email_verification_status}; source: " . ($lead->source_name ?: 'unknown')];
+        $f['contact_verification'] = [min(1, $v), 'Email ' . EmailStatus::label($lead->email_verification_status) . '; source: ' . ($lead->source_name ?: 'unknown')];
         if (!$lead->email) {
             $missing[] = 'No email address — needs enrichment before outreach.';
         }
@@ -353,7 +354,7 @@ class LeadScoringService
             !$lead->email && $lead->phone => "No email on record. Call the published business number to reach the decision-maker, then offer {$offer}.",
             !$lead->email => 'Enrich: find a decision-maker or public business email (run a website audit).',
             $lead->contact_status === 'generic_inbox' && in_array($priority, ['high', 'qualified'], true) => "Find the owner/decision-maker's name; meanwhile send a short evidence-based note to the public inbox offering {$offer}.",
-            $lead->email_verification_status === 'unverified' => "Verify the email, then send a first-touch email offering {$offer}.",
+            in_array($lead->email_verification_status, [EmailStatus::UNVERIFIED, EmailStatus::MX_ONLY, EmailStatus::UNKNOWN], true) => "Confirm the mailbox (SMTP probe or Hunter), then send a first-touch email offering {$offer}.",
             default => "Send personalised first-touch email offering {$offer}.",
         };
     }

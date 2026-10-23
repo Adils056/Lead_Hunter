@@ -191,7 +191,15 @@
                     <input class="form-check-input ms-0 me-3" type="checkbox" id="require_verified_email" name="require_verified_email" value="1" {{ old('require_verified_email', $settings->require_verified_email) ? 'checked' : '' }}>
                     <label class="form-check-label fw-semibold" for="require_verified_email">
                         Enforce Email Verification
-                        <span class="d-block small text-muted fw-normal">Only dispatch to contacts with verified MX / SMTP deliverability.</span>
+                        <span class="d-block small text-muted fw-normal">Only dispatch to addresses whose mailbox was confirmed by an SMTP probe or Hunter (catch-all domains included).</span>
+                    </label>
+                </div>
+
+                <div class="form-check form-switch mb-4 p-3 bg-light rounded border">
+                    <input class="form-check-input ms-0 me-3" type="checkbox" id="allow_mx_only" name="allow_mx_only" value="1" {{ old('allow_mx_only', $settings->allow_mx_only) ? 'checked' : '' }}>
+                    <label class="form-check-label fw-semibold" for="allow_mx_only">
+                        Also allow "MX only" addresses
+                        <span class="d-block small text-muted fw-normal">The domain receives mail but the mailbox itself was never checked (this server cannot reach port 25 and Hunter was not used). Leave off unless you accept a higher bounce risk.</span>
                     </label>
                 </div>
 

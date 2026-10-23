@@ -56,9 +56,9 @@
         <div class="col-md-2">
             <select name="verification" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Verification States</option>
-                <option value="verified" {{ $verification == 'verified' ? 'selected' : '' }}>Verified Only</option>
-                <option value="risky" {{ $verification == 'risky' ? 'selected' : '' }}>Risky / Catch-all</option>
-                <option value="unverified" {{ $verification == 'unverified' ? 'selected' : '' }}>Unverified</option>
+                @foreach(\App\Support\EmailStatus::ALL as $st)
+                <option value="{{ $st }}" {{ $verification == $st ? 'selected' : '' }}>{{ \App\Support\EmailStatus::label($st) }}</option>
+                @endforeach
             </select>
         </div>
 
@@ -123,9 +123,9 @@
                                 <span class="text-dark small">{{ $lead->email }}</span>
                             </div>
                             <div>
-                                <span class="badge {{ $lead->email_verification_status === 'verified' ? 'bg-success-subtle text-success' : ($lead->email_verification_status === 'risky' ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary') }}" style="font-size: 0.7rem;">
-                                    <i class="bi {{ $lead->email_verification_status === 'verified' ? 'bi-check-circle-fill' : 'bi-question-circle' }} me-1"></i>
-                                    {{ ucfirst($lead->email_verification_status) }}
+                                <span class="badge {{ \App\Support\EmailStatus::badgeClass($lead->email_verification_status) }}" style="font-size: 0.7rem;">
+                                    <i class="bi {{ \App\Support\EmailStatus::icon($lead->email_verification_status) }} me-1"></i>
+                                    {{ \App\Support\EmailStatus::label($lead->email_verification_status) }}
                                 </span>
                             </div>
                         @else

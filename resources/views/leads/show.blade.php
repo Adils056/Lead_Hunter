@@ -165,8 +165,8 @@
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="small text-muted">Verification Status:</span>
-                    <span class="badge {{ $lead->email_verification_status === 'verified' ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning' }} border">
-                        {{ ucfirst($lead->email_verification_status) }}
+                    <span class="badge {{ \App\Support\EmailStatus::badgeClass($lead->email_verification_status) }} border">
+                        {{ \App\Support\EmailStatus::label($lead->email_verification_status) }}
                     </span>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-1">
