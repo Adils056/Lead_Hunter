@@ -1,0 +1,30 @@
+LeadPilot AI v3 — Lead Hunting Engine — install on XAMPP (Windows)
+==================================================================
+
+1. BACK UP C:\xampp\htdocs\Leed_generation (copy the folder) and your MySQL database.
+
+2. Extract this zip INTO C:\xampp\htdocs\Leed_generation, choosing "Replace files".
+
+3. DELETE this old file (it contained fake tender data):
+     app\Services\Discovery\Adapters\PublicProcurementAdapter.php
+
+4. Add to your .env (see .env.example for all keys):
+     GOOGLE_PLACES_API_KEY=your_key      (Google Cloud > enable "Places API (New)", restrict key)
+     LEADPILOT_AGENCY_NAME="Eziline Software House"
+     LEADPILOT_SENDER_NAME="Ismail"
+     LEADPILOT_BOOKING_URL=               (optional Calendly link)
+     LEADPILOT_REMOTIVE_ENABLED=false
+
+5. In a terminal in the project folder:
+     php artisan migrate
+     php artisan db:seed --class=IcpProfileSeeder
+     php artisan config:clear
+     php artisan test                    (expect 69 passed)
+
+6. Keep these running (two terminals, or Task Scheduler):
+     php artisan queue:work database     (hunts, audits, re-scoring run here)
+     php artisan schedule:work           (daily Google Places purge, weekly hunts)
+
+7. Open: Lead Hunter (ICP) in the sidebar -> open the sample ICP -> "Run hunt now".
+
+Docs: docs\LEAD_HUNTING_ENGINE.md and docs\COMPETITOR_RESEARCH.md

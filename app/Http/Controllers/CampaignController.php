@@ -1,0 +1,238 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\AuditLog;
+use App\Models\Campaign;
+use App\Models\CampaignRecipient;
+use App\Models\EmailTemplate;
+use App\Models\Lead;
+use App\Models\LeadSource;
+use App\Services\CampaignDeliveryService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class CampaignController extends Controller
+{
+    protected CampaignDeliveryService $deliveryService;
+
+    public function __construct(CampaignDeliveryService $deliveryService)
+    {
+        $this->deliveryService = $deliveryService;
+    }
+
+    public function index()
+    {
+        $this->authorize('viewAny', Campaign::class);
+
+        $campaigns = Campaign::with(['template', 'creator', 'approver'])
+            ->withCount([
+                'recipients as total_recipients',
+                'recipients as sent_count' => fn($q) => $q->whereIn('status', ['sent', 'delivered', 'replied']),
+                'recipients as delivered_count' => fn($q) => $q->whereIn('status', ['delivered', 'replied']),
+                'recipients as replied_count' => fn($q) => $q->where('status', 'replied'),
+                'recipients as bounced_count' => fn($q) => $q->where('status', 'bounced'),
+            ])
+            ->latest()
+            ->paginate(10);
+
+        return view('campaigns.index', compact('campaigns'));
+    }
+
+    public function create()
+    {
+        $this->authorize('create', Campaign::class);
+
+        $templates = EmailTemplate::where('is_active', true)->get();
+        $sources = LeadSource::where('is_active', true)->get();
+        $countries = Lead::whereNotNull('country')->distinct()->pluck('country');
+        $industries = Lead::whereNotNull('industry')->distinct()->pluck('industry');
+
+        return view('campaigns.create', compact('templates', 'sources', 'countries', 'industries'));
+    }
+
+    public function store(Request $request)
+    {
+        $this->authorize('create', Campaign::class);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'service_offered' => ['required', 'string'],
+            'target_countries' => ['nullable', 'array'],
+            'target_industries' => ['nullable', 'array'],
+            'min_lead_score' => ['required', 'integer', 'between:1,100'],
+            'eligible_sources' => ['nullable', 'array'],
+            'daily_limit' => ['required', 'integer', 'between:1,500'],
+            'email_template_id' => ['required', 'exists:email_templates,id'],
+            'require_approval' => ['boolean'],
+            'timezone' => ['required', 'string'],
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => $data['name'],
+            'service_offered' => $data['service_offered'],
+            'target_countries' => $data['target_countries'] ?? [],
+            'target_industries' => $data['target_industries'] ?? [],
+            'min_lead_score' => $data['min_lead_score'],
+            'eligible_sources' => $data['eligible_sources'] ?? [],
+            'contact_rules' => ['require_verified_email' => true],
+            'daily_limit' => $data['daily_limit'],
+            'email_template_id' => $data['email_template_id'],
+            'require_approval' => $request->boolean('require_approval', true),
+            'timezone' => $data['timezone'],
+            'status' => 'draft',
+            'created_by' => Auth::id(),
+        ]);
+
+        // Generate recipient drafts based on targeting rules
+        $recipientsCount = $this->deliveryService->buildCampaignDrafts($campaign);
+
+        AuditLog::record('campaign_created', $campaign, null, ['recipients_drafted' => $recipientsCount]);
+
+        return redirect()->route('campaigns.show', $campaign)
+            ->with('success', "Campaign '{$campaign->name}' created! {$recipientsCount} qualified prospect drafts generated.");
+    }
+
+    public function show(Campaign $campaign)
+    {
+        $this->authorize('view', $campaign);
+
+        $campaign->load(['template', 'creator', 'approver']);
+
+        $recipients = $campaign->recipients()
+            ->with('lead.company')
+            ->latest()
+            ->paginate(15);
+
+        $metrics = [
+            'total' => $campaign->recipients()->count(),
+            'draft' => $campaign->recipients()->where('status', 'draft')->count(),
+            'approved' => $campaign->recipients()->where('status', 'approved')->count(),
+            'sent' => $campaign->recipients()->whereIn('status', ['sent', 'delivered', 'replied'])->count(),
+            'delivered' => $campaign->recipients()->whereIn('status', ['delivered', 'replied'])->count(),
+            'replied' => $campaign->recipients()->where('status', 'replied')->count(),
+            'bounced' => $campaign->recipients()->where('status', 'bounced')->count(),
+            'opted_out' => $campaign->recipients()->where('status', 'opted_out')->count(),
+        ];
+
+        return view('campaigns.show', compact('campaign', 'recipients', 'metrics'));
+    }
+
+    public function approve(Campaign $campaign)
+    {
+        $this->authorize('approve', $campaign);
+
+        // Approve campaign and all draft recipients
+        $campaign->update([
+            'status' => 'running',
+            'approved_by' => Auth::id(),
+            'approved_at' => now(),
+            'emergency_stopped' => false,
+        ]);
+
+        $campaign->recipients()->whereIn('status', ['draft', 'queued'])->update(['status' => 'approved']);
+
+        AuditLog::record('campaign_approved', $campaign);
+
+        return back()->with('success', "Campaign '{$campaign->name}' approved by Administrator. Sending queue is now active.");
+    }
+
+    public function pause(Campaign $campaign)
+    {
+        $this->authorize('update', $campaign);
+
+        $campaign->update(['status' => 'paused']);
+        AuditLog::record('campaign_paused', $campaign);
+
+        return back()->with('info', "Campaign '{$campaign->name}' paused.");
+    }
+
+    public function resume(Campaign $campaign)
+    {
+        $this->authorize('update', $campaign);
+
+        if ($campaign->require_approval && !$campaign->approved_by) {
+            return back()->with('error', 'Cannot resume: Campaign requires administrator approval before sending.');
+        }
+
+        $campaign->update(['status' => 'running', 'emergency_stopped' => false]);
+        AuditLog::record('campaign_resumed', $campaign);
+
+        return back()->with('success', "Campaign '{$campaign->name}' resumed.");
+    }
+
+    public function emergencyStop(Campaign $campaign)
+    {
+        $this->authorize('emergencyStop', $campaign);
+
+        $this->deliveryService->emergencyStop($campaign, 'Administrative emergency killswitch triggered.');
+
+        return back()->with('warning', "EMERGENCY STOP ACTIVATED: Campaign '{$campaign->name}' has been halted immediately.");
+    }
+
+    public function dispatchRecipient(CampaignRecipient $recipient)
+    {
+        $this->authorize('update', $recipient->campaign);
+
+        $success = $this->deliveryService->dispatchRecipient($recipient);
+
+        if ($success) {
+            return back()->with('success', "Message dispatched successfully to {$recipient->lead->email}.");
+        } else {
+            return back()->with('error', "Could not dispatch message: {$recipient->error_message}");
+        }
+    }
+
+    public function sendTestEmail(Request $request, Campaign $campaign)
+    {
+        $request->validate([
+            'test_email' => ['required', 'email'],
+        ]);
+
+        $sent = $this->deliveryService->sendTestEmail($campaign, $request->input('test_email'));
+
+        if ($sent) {
+            return back()->with('success', "Safe preview test email dispatched to {$request->input('test_email')}.");
+        }
+
+        return back()->with('error', 'Failed to send test email. Check email format and mail configuration.');
+    }
+
+    public function unsubscribe(Request $request)
+    {
+        // Laravel already URL-decodes the query; decoding again turns "john+sales@" into "john sales@".
+        $raw = trim((string) $request->input('email', ''));
+        $candidates = array_unique([$raw, urldecode($raw)]); // v1-v3 links were double-encoded
+        $email = null;
+        $valid = false;
+        $token = (string) $request->input('token', '');
+        foreach ($candidates as $c) {
+            if (hash_equals(\App\Services\Outreach\OutreachMailer::unsubscribeToken($c), $token) || hash_equals(md5($c . config('app.key')), $token)) {
+                $valid = true;
+                $email = strtolower($c);
+                break;
+            }
+        }
+        $email ??= strtolower($raw);
+
+        // v4: the token must match, otherwise anyone could suppress any address
+        if (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)
+            && $valid) {
+            \App\Models\Suppression::addSuppression($email, 'unsubscribe', 'unsubscribe_link');
+            
+            // Advance lead stage
+            $lead = Lead::where('email', $email)->first();
+            if ($lead) {
+                $lead->update(['lifecycle_stage' => 'not_a_fit']);
+            }
+
+            if ($request->isMethod('post')) {
+                return response('Unsubscribed', 200); // RFC 8058 one-click
+            }
+
+            return view('campaigns.unsubscribed', ['email' => $email]);
+        }
+
+        return $request->isMethod('post') ? response('Invalid unsubscribe link', 400) : response('This unsubscribe link is invalid or expired. Reply "unsubscribe" to our email and we will remove you.', 400);
+    }
+}

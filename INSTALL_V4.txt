@@ -1,0 +1,37 @@
+LeadPilot AI v4 — Autopilot — install on XAMPP (Windows)
+========================================================
+
+1. BACK UP C:\xampp\htdocs\Leed_generation (copy the folder) and your MySQL database.
+
+2. Extract this zip INTO C:\xampp\htdocs\Leed_generation and choose "Replace files".
+
+3. In a terminal in the project folder:
+     php artisan migrate
+     php artisan leadpilot:setup        (applies safe defaults + prints the health checklist)
+     php artisan config:clear
+     php artisan test                   (expect: 111 passed)
+
+4. Replace the two terminal windows (start_workers.bat) with supervised background tasks.
+   Open PowerShell AS ADMINISTRATOR in the project folder:
+     powershell -ExecutionPolicy Bypass -File deploy\windows\install_tasks.ps1
+
+5. Add to .env (see .env.example, section "v4 Autopilot"):
+     APP_URL=<address prospects can reach — needed for unsubscribe links>
+     IMAP_ENABLED=true
+     IMAP_USERNAME=<your Gmail address>
+     IMAP_PASSWORD=<Gmail App Password — Google Account > Security > App passwords>
+     OSM_CONTACT_EMAIL=<your email>      (OpenStreetMap usage policy)
+   Then: php artisan config:clear
+
+6. Quick SMTP test (emails ONLY you):
+     php artisan leadpilot:mail-test <your admin login email>
+
+7. Real-data validation (runs real searches, audits, scoring, drafts; emails ONLY you):
+     php artisan leadpilot:validate-live --limit=5 --audits=5 --pilot-to=<your admin login email>
+   Report: storage\app\validation\validation-<time>.md  -> send it to Claude.
+
+8. Open the app: sidebar > Autopilot. Approvals appear in the sidebar badge and the bell.
+
+Safety defaults: first emails need your approval; paid APIs are off (budget $0);
+shared inboxes (info@) and tender contacts are never emailed automatically.
+Docs: docs\AUTOPILOT_V4.md, docs\API_RESEARCH_V4.md
