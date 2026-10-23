@@ -22,3 +22,14 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# LeadPilot additions (23 Oct 2026)
+.env.bak*
+.env.*.bak
+*.bak
+/tools/duckdb/duckdb
+/tools/duckdb/duckdb.exe
+/tools/duckdb/*.zip
+/storage/app/overture/
+/storage/app/validation/
+/public/.htpasswd

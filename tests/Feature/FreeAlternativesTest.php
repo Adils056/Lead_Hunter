@@ -154,7 +154,7 @@ class FreeAlternativesTest extends TestCase
 
     public function test_ollama_is_a_free_llm_provider_and_ai_research_uses_it_before_the_rule_engine(): void
     {
-        config(['leadpilot.sources.ollama.enabled' => true, 'leadpilot.sources.ollama.url' => 'http://localhost:11434', 'leadpilot.keys.gemini' => null, 'leadpilot.keys.openai' => null]);
+        config(['leadpilot.sources.ollama.enabled' => true, 'leadpilot.sources.ollama.url' => 'http://localhost:11434', 'leadpilot.sources.ollama.research' => true, 'leadpilot.keys.gemini' => null, 'leadpilot.keys.openai' => null]);
         Cache::put('ollama_reachable', true, 600);
         $research = ['business_summary' => 'A Sialkot sportswear exporter.', 'industry_classification' => 'Textile', 'potential_software_needs' => ['ERP'],
             'recommended_agency_service' => 'ERP and CRM development', 'supporting_evidence' => 'exporter with a website', 'missing_information' => 'current systems',
@@ -173,6 +173,47 @@ class FreeAlternativesTest extends TestCase
         $this->assertSame('A Sialkot sportswear exporter.', $company->fresh()->ai_research['business_summary']);
         $this->assertDatabaseHas('enrichment_records', ['enrichable_id' => $company->id, 'provider' => 'ollama', 'operation' => 'company_research', 'cost_estimated' => 0]);
         $this->assertDatabaseHas('usage_logs', ['provider' => 'ollama', 'cost_cents' => 0]);
+    }
+
+    public function test_local_model_is_not_used_for_open_ended_research_unless_the_owner_opts_in(): void
+    {
+        config(['leadpilot.sources.ollama.enabled' => true, 'leadpilot.sources.ollama.research' => false, 'leadpilot.keys.gemini' => null, 'leadpilot.keys.openai' => null]);
+        Cache::put('ollama_reachable', true, 600);
+        Http::fake(['localhost:11434/api/chat' => Http::response(['message' => ['content' => json_encode(['business_summary' => 'invented'])]])]);
+        $company = Company::create(['name' => 'Careful Co', 'website' => 'https://careful.example', 'country' => 'Pakistan']);
+        $analysis = app(AiResearchService::class)->researchCompany($company);
+        $this->assertNotSame('invented', $analysis['business_summary'] ?? null, 'rule-based engine used, not the small local model');
+        Http::assertNothingSent();
+        // drafts (guarded) still may use it
+        $this->assertSame('ollama', app(LlmClient::class)->json('s', 'u', ['type' => 'object'])['provider']);
+    }
+
+    public function test_draft_guardrails_fix_the_greeting_token_and_reject_placeholders_or_a_changed_cta(): void
+    {
+        config(['leadpilot.sources.ollama.enabled' => true, 'leadpilot.keys.gemini' => null, 'leadpilot.keys.openai' => null]);
+        Cache::put('ollama_reachable', true, 600);
+        $cta = 'Reply with a good time this week.';
+        $sig = config('leadpilot.agency.sender_name') . "\n" . config('leadpilot.agency.name');
+        $good = "{{Greeting}} I noticed your homepage has no mobile viewport tag. A short review could help. {$cta}\n{$sig} {{greeting}}";
+        $placeholder = "Dear [Client's Name], your homepage has no mobile viewport tag. {$cta}\n{$sig}";
+        $changedCta = "{{GREETING}} your homepage has no mobile viewport tag. Could you reply with a 20-minute website review?\n{$sig}";
+        Http::fake(['localhost:11434/api/chat' => Http::sequence()
+            ->push(['message' => ['content' => json_encode(['subject' => 'Mobile view', 'body' => $good])]])
+            ->push(['message' => ['content' => json_encode(['subject' => 'Mobile view', 'body' => $placeholder])]])
+            ->push(['message' => ['content' => json_encode(['subject' => 'Mobile view', 'body' => $changedCta])]])
+            ->push(['message' => ['content' => json_encode(['subject' => 'Mobile view', 'body' => "{{GREETING}} your homepage has no mobile viewport tag. {$cta}"])]])]);
+        $svc = app(\App\Services\Sales\ConversionAssistantService::class);
+        $polish = new \ReflectionMethod($svc, 'aiPolish');
+        $args = ['Hi Ali,', [['text' => 'your homepage has no mobile viewport tag']], ['pitch' => 'a 20-minute review'], $cta, 90];
+
+        $ok = $polish->invoke($svc, ...$args);
+        $this->assertSame('ollama', $ok['ai_provider']);
+        $this->assertStringStartsWith('Hi Ali, I noticed', $ok['body'], 'wrong-case token replaced once');
+        $this->assertStringNotContainsString('{{', $ok['body'], 'duplicate token removed');
+        $this->assertNull($polish->invoke($svc, ...$args), '[Client\'s Name] placeholder rejected');
+        $this->assertNull($polish->invoke($svc, ...$args), 'distorted call-to-action rejected');
+        $noSig = $polish->invoke($svc, ...$args);
+        $this->assertStringEndsWith($sig, $noSig['body'], 'missing signature appended');
     }
 
     public function test_without_any_llm_the_research_falls_back_to_the_rule_engine_and_nothing_is_called(): void

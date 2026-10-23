@@ -155,3 +155,24 @@ Owner instruction: "for all paid APIs required in our software, find free altern
 Code: `WikidataOrgsAdapter`; `EmailVerificationService::verifyWithDnsAndSyntax` rewritten (real MX order, bigger disposable list, `smtpProbe`, honest statuses); `LlmClient::ollama` + `ProviderRegistry::ollamaReachable`; `AiResearchService` now shares its prompts/schema (`researchPrompts`) and tries the free providers through `LlmClient` before the rule-based engine; `IcpSearchConfigBuilder` default B2B source = first configured `b2b_discovery` provider (Wikidata); config `providers.b2b_discovery = [wikidata_orgs, apollo_orgs]`, `providers.llm = [ollama, openai]`, `sources.ollama`, `smtp_probe`; `phpunit.xml` disables Ollama and the probe for determinism. Tests: `tests/Feature/FreeAlternativesTest.php` (6 tests, 53 assertions). Full suite **145 tests / 1,162 assertions** green.
 
 Not fabricated, not claimed: no mailbox is reported "SMTP-verified" on this PC; Ollama is reported NOT TESTED live; Wikidata leads without a published e-mail start as `needs_enrichment`.
+### 5d. 23 Oct 2026, 15:00–16:30 PKT: Ollama installed and measured; guardrails tightened
+
+Owner asked to download Ollama. Done, with the facts that matter:
+
+| Item | Result |
+|---|---|
+| Install | Official `OllamaSetup.exe` (1.66 GB, Authenticode signature **Ollama Inc.** valid) → `H:\Ollama\app`, because C: had 3.4 GB free. Models on `H:\Ollama\models` via user env `OLLAMA_MODELS`. Version 0.40.9. Tray app in Startup; server listening on 127.0.0.1:11434. |
+| Models | `qwen2.5:1.5b` (986 MB) and `qwen2.5:3b` (1.9 GB). Free RAM on the PC during the test: 0.2–0.7 GB (browsers, VS Code, MySQL), CPU only. |
+| LeadPilot detection | `ProviderRegistry::select('llm') = ['ollama']` with no key. |
+| Draft (LlmClient, cold-email prompt) | 1.5b: 31 s, wrote "Dear [Client's Name]" and turned the ask into "reply with a 20-minute website review". 3b: 85 s, kept the facts, but wrote `{{Greeting}}` twice. |
+| Research (AiResearchService) | 1.5b 88 s, 3b 115 s: **both fabricated** ("known for its advanced equipment", "looking for a Laravel agency", "we have implemented solutions for various healthcare facilities"), confidence High/Medium. |
+
+Changes made because of those measurements (all tested, **147 tests / 1,170 assertions** green):
+
+- `ConversionAssistantService::aiPolish` guardrails: greeting token accepted in any case and used once, bracket placeholders and leftover `{{tokens}}` rejected, every significant word of the call-to-action must survive. Rejected drafts fall back to the template (nothing invented reaches a prospect).
+- `LlmClient::json(..., array $exclude)`; `AiResearchService` excludes `ollama` from open-ended research unless `LEADPILOT_OLLAMA_RESEARCH=true` (config `sources.ollama.research`). Research output is only shown on the Company page; it never feeds e-mails.
+- Duplicate config/registry blocks from a re-run patch script removed (single `sources.ollama`, `smtp_probe`, `wikidata_orgs`, `ollama` entries).
+- Docs: `FREE_SOURCE_SETUP.md` §0d updated with the live numbers; `LIVE_SERVER_SETUP.md` written (VPS spec, port 25, DNS/e-mail authentication, install order, go-live checklist, expected capacity).
+
+Honest summary: Ollama is installed and works as a free, private draft polisher behind guardrails. On this laptop it is slow (31–85 s per draft) and too small to be trusted for research. On the planned 8 GB VPS the same setup runs unattended; a Gemini free-tier key remains the better free choice for research quality.
+Guarded live re-test (same afternoon): `qwen2.5:3b` draft accepted on the 2nd try (16 s once the model was warm; first call 75 s includes loading) with both facts and the exact call-to-action kept; `qwen2.5:1.5b` was rejected twice (changed the ask) and the template was used. The accepted 3b draft had dropped the signature, so `aiPolish` now appends the sender signature whenever a model omits it (test added; 147 tests / 1,171 assertions).

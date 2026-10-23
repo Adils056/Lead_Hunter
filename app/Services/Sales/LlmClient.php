@@ -16,13 +16,14 @@ use Illuminate\Support\Facades\Http;
 class LlmClient
 {
     /** @return array{data: array, provider: string}|null */
-    public function json(string $system, string $user, array $schema, int $maxTokens = 600): ?array
+    /** @param string[] $exclude provider slugs a caller does not trust for this task (e.g. ['ollama'] for open-ended research) */
+    public function json(string $system, string $user, array $schema, int $maxTokens = 600, array $exclude = []): ?array
     {
         $registry = app(ProviderRegistry::class);
-        $candidates = array_values(array_unique(array_merge(
+        $candidates = array_values(array_diff(array_unique(array_merge(
             $registry->isConfigured('gemini') ? ['gemini'] : [],
             $registry->select('llm'),
-        )));
+        )), $exclude));
         foreach ($candidates as $p) {
             if (!app(ProviderHealthService::class)->isAvailable($p)) {
                 continue;

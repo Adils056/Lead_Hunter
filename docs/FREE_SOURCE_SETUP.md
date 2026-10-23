@@ -12,7 +12,7 @@ All sources below cost $0 and need no key unless stated. "Verified live" = run f
 | EU TED API v3 | `eu_ted` | none for search | EU tenders for IT CPV codes (competition notices only) | Yes; shapes corrected against the live response |
 | Greenhouse / Lever job boards | `ats_watchlist` | none | Tech hiring at named companies you watch | Yes, with public board tokens |
 | Built‑in DNS/MX + **SMTP mailbox probe** | `dns_mx` | none | Syntax, real MX lookup, disposable/free-mail lists, then RCPT TO on the MX (mailbox exists / rejected / catch-all). The free alternative to Hunter | Yes — on this PC outbound port 25 is blocked by the ISP, so the probe reports "blocked" and the MX-level result is used (honest status, no false "verified") |
-| **Ollama local LLM** | `ollama` | none (install Ollama on the PC) | Draft polishing and company research with a local model; nothing leaves the machine. The free alternative to OpenAI | Code tested; Ollama is not installed on this PC yet (NOT TESTED live) |
+| **Ollama local LLM** | `ollama` | none (install Ollama on the PC) | Draft polishing and company research with a local model; nothing leaves the machine. The free alternative to OpenAI | Yes — Ollama 0.40.9 installed 23 Oct (H:\Ollama), qwen2.5 1.5b/3b. Drafts work behind guardrails (31–85 s each on this CPU); open-ended research is **off** for local models because they invented facts |
 | Google PageSpeed Insights | `pagespeed` | optional key | Mobile performance score for audits | Off by default (`PAGESPEED_ENABLED`) |
 
 Every paid provider now has a free, keyless stand-in that the registry prefers automatically: Google Places → Overture, Apollo → Wikidata (+ Overture for local B2B), Hunter → MX + SMTP probe, OpenAI → Ollama (or the keyed Gemini free tier). Paid or keyed (not used while the budget is $0): Google Places (`GOOGLE_PLACES_API_KEY`, replaced by Overture in ICP #1 on 23 Oct 2026), Apollo (`APOLLO_API_KEY`), Hunter (`HUNTER_API_KEY`), Gemini (`GEMINI_API_KEY`, free tier), OpenAI (`OPENAI_API_KEY`). Remotive is disabled because its terms forbid lead collection.
@@ -58,6 +58,13 @@ When no MX accepts a TCP connection, the network is assumed to block outbound po
 ## 0d. Ollama local LLM (the replacement for OpenAI)
 
 Install Ollama from https://ollama.com/download, then `ollama pull qwen2.5:3b` (about 2 GB; any chat model works, set `LEADPILOT_OLLAMA_MODEL`). LeadPilot detects the local API at `http://localhost:11434` (checked every 10 minutes) and `LlmClient` uses it for e-mail draft polishing and `AiResearchService` for company research, with the same JSON-schema-constrained output as OpenAI. Order: keyed Gemini free tier → Ollama → OpenAI (only within budget) → rule-based engine. Nothing leaves the PC; cost is logged as 0.
+
+Live findings on the owner's PC (i7-7600U, 8 GB, no GPU, 23 Oct 2026): a cold-e-mail draft takes about 31 s with `qwen2.5:1.5b` and 85 s with `qwen2.5:3b`; company research 90–115 s. **Both models invented facts in open-ended research** ("known for its advanced equipment", "looking for a Laravel agency", "we have implemented solutions for various healthcare facilities") and labelled them High/Medium confidence. Therefore:
+
+- Drafts: allowed, because the guardrails make a bad draft harmless — numbers must come from the facts, the greeting token is normalised, bracket placeholders (`[Client's Name]`) and leftover `{{tokens}}` are rejected, and every significant word of the call-to-action must survive. A rejected draft falls back to the deterministic template, which is what was sending before.
+- Company research: local models are **excluded by default** (`LEADPILOT_OLLAMA_RESEARCH=false`). Turn it on only with a 7b+ model on a machine with RAM for it, and read the output as a draft, never as fact. The keyed Gemini free tier is still used for research when present.
+
+Install on this PC: installer and models live on `H:\Ollama` (C: was 98 % full), the user environment variable `OLLAMA_MODELS=H:\Ollama\models` is set, and the Ollama tray app is in the Startup folder so it starts at login.
 
 ## 1. OpenStreetMap (Overpass)
 

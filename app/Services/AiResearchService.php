@@ -232,7 +232,10 @@ EOT;
     protected function researchViaFreeLlm(Company $company, ?int $userId): ?array
     {
         [$system, $user, $schema] = $this->researchPrompts($company);
-        $res = app(\App\Services\Sales\LlmClient::class)->json($system, $user, $schema, $this->maxTokens);
+        // Live finding (23 Oct 2026): qwen2.5 1.5b/3b on CPU invented facts ("known for its advanced equipment", "looking for a
+        // Laravel agency") with confidence High. Open-ended research therefore uses the local model only when the owner opts in.
+        $exclude = config('leadpilot.sources.ollama.research') ? [] : ['ollama'];
+        $res = app(\App\Services\Sales\LlmClient::class)->json($system, $user, $schema, $this->maxTokens, $exclude);
         $analysis = $res['data'] ?? null;
         if (!is_array($analysis) || empty($analysis['business_summary'])) {
             return null;

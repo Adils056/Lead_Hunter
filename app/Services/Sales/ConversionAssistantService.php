@@ -183,7 +183,26 @@ class ConversionAssistantService
         if (!is_array($out) || empty($out['body']) || empty($out['subject'])) {
             return null;
         }
-        $out['body'] = str_contains($out['body'], '{{GREETING}}') ? str_replace('{{GREETING}}', $greeting, $out['body']) : $greeting . "\n\n" . $out['body'];
+        // Small models write {{Greeting}} / {{ greeting }} or repeat the token: normalise, use it once, drop the rest.
+        $out['body'] = preg_replace('/\{\{\s*greeting\s*\}\}/i', '{{GREETING}}', $out['body']);
+        $out['body'] = str_contains($out['body'], '{{GREETING}}')
+            ? trim(str_replace('{{GREETING}}', '', preg_replace('/\{\{GREETING\}\}/', $greeting, $out['body'], 1)))
+            : $greeting . "\n\n" . $out['body'];
+        // Guardrails: no placeholders left ([Client's Name], {{anything}}), and the exact call-to-action must survive.
+        if (preg_match('/\[[^\]\n]{1,40}\]|\{\{[^}]*\}\}/', $out['body'] . ' ' . $out['subject'])) {
+            Log::info('AI draft rejected: placeholder left in text');
+
+            return null;
+        }
+        $norm = fn (string $s) => ' ' . preg_replace('/[^a-z0-9]+/', ' ', strtolower($s)) . ' ';
+        $bodyNorm = $norm($out['body']);
+        foreach (array_filter(explode(' ', $norm($cta)), fn ($w) => strlen($w) > 3) as $word) {
+            if (!str_contains($bodyNorm, " {$word} ")) {
+                Log::info("AI draft rejected: call-to-action changed or missing ({$word})");
+
+                return null;
+            }
+        }
 
         // Guardrails: word limit and no number that is not in the facts/CTA
         $allowedText = implode(' ', $allowedFacts) . ' ' . $cta . ' ' . $agency['name'] . ' ' . $greeting;
@@ -196,6 +215,9 @@ class ConversionAssistantService
 
                 return null;
             }
+        }
+        if (!str_contains($out['body'], (string) $agency['name'])) {
+            $out['body'] = rtrim($out['body']) . "\n\n" . $agency['sender_name'] . "\n" . $agency['name']; // models drop the signature; never send without it
         }
         if ($this->words($out['body'], true) > $limit) {
             return null;

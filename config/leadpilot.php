@@ -194,13 +194,9 @@ return [
             'url' => rtrim((string) env('LEADPILOT_OLLAMA_URL', 'http://localhost:11434'), '/'),
             'model' => env('LEADPILOT_OLLAMA_MODEL', 'qwen2.5:3b'),
             'timeout' => (int) env('LEADPILOT_OLLAMA_TIMEOUT', 120),
-        ],
-        'ollama' => [
-            // Free local LLM (https://ollama.com): no key, nothing leaves this PC. Install Ollama, run `ollama pull qwen2.5:3b`.
-            'enabled' => (bool) env('LEADPILOT_OLLAMA_ENABLED', true),
-            'url' => rtrim((string) env('LEADPILOT_OLLAMA_URL', 'http://localhost:11434'), '/'),
-            'model' => env('LEADPILOT_OLLAMA_MODEL', 'qwen2.5:3b'),
-            'timeout' => (int) env('LEADPILOT_OLLAMA_TIMEOUT', 120),
+            // Drafts are guarded (facts, numbers, CTA, placeholders) so a small local model can only reword or be rejected.
+            // Company research is open-ended and small models fabricate there: off unless the owner opts in (needs >= 7b to be useful).
+            'research' => (bool) env('LEADPILOT_OLLAMA_RESEARCH', false),
         ],
         'pagespeed' => [
             'api_key' => env('PAGESPEED_API_KEY'),
@@ -219,10 +215,6 @@ return [
     ],
 
     // Free-mail domains: never treat as a company domain
-    // Free mailbox-existence check (the alternative to Hunter): SMTP RCPT TO on the domain's MX, no email is sent.
-    // Needs outbound TCP 25; when the network blocks it (most home ISPs) the check reports "not probed" and falls back to MX.
-    'smtp_probe' => (bool) env('LEADPILOT_SMTP_PROBE', true),
-
     // Free mailbox-existence check (the alternative to Hunter): SMTP RCPT TO on the domain's MX, no email is sent.
     // Needs outbound TCP 25; when the network blocks it (most home ISPs) the check reports "not probed" and falls back to MX.
     'smtp_probe' => (bool) env('LEADPILOT_SMTP_PROBE', true),
