@@ -219,6 +219,13 @@ return [
     // Needs outbound TCP 25; when the network blocks it (most home ISPs) the check reports "not probed" and falls back to MX.
     'smtp_probe' => (bool) env('LEADPILOT_SMTP_PROBE', true),
 
+    // Inbound webhooks: HMAC-SHA256 of the raw body with this secret (or the provider integration's webhook_secret).
+    // No secret configured = every webhook is rejected with 503 (fail closed).
+    'webhooks' => [
+        'secret' => env('LEADPILOT_WEBHOOK_SECRET'),
+        'providers' => ['resend', 'sendgrid', 'mailgun', 'postmark', 'ses', 'meta_ads', 'google_ads', 'tiktok_ads'],
+    ],
+
     // Self-service registration. New accounts get `default_role` (sales: can work leads, cannot change outreach
     // settings). The very first account of an empty installation becomes admin so a fresh server can be set up.
     'registration' => [

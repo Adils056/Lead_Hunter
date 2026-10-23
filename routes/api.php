@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('v1')->group(function () {
+// Phase 0 hotfix: the API was public (prospect PII, paid actions). Session auth + rate limit; JSON callers get 401.
+Route::prefix('v1')->middleware(['auth', 'throttle:120,1'])->group(function () {
     Route::get('/dashboard', [ApiController::class, 'dashboard']);
     Route::get('/companies', [ApiController::class, 'getCompanies']);
     Route::get('/companies/{company}', [ApiController::class, 'showCompany']);

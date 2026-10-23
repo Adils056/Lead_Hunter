@@ -27,6 +27,7 @@ class WebhookAndReplyTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['leadpilot.webhooks.secret' => 'test-secret']);
 
         $this->admin = User::factory()->create([
             'role' => 'admin',
@@ -86,7 +87,7 @@ class WebhookAndReplyTest extends TestCase
             'email' => 'sconnor@acmeclouddynamics.com',
         ];
 
-        $response = $this->postJson('/webhooks/resend', $payload);
+        $response = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
 
         $response->assertStatus(200);
         $response->assertJson(['status' => 'success']);
@@ -95,7 +96,7 @@ class WebhookAndReplyTest extends TestCase
         $this->assertEquals('delivered', $this->recipient->status);
         $this->assertNotNull($this->recipient->delivered_at);
         $this->assertDatabaseHas('webhook_events', [
-            'idempotency_key' => 'evt_delivery_1001',
+            'idempotency_key' => 'resend:evt_delivery_1001',
             'is_processed' => true,
         ]);
     }
@@ -110,16 +111,16 @@ class WebhookAndReplyTest extends TestCase
         ];
 
         // First send
-        $first = $this->postJson('/webhooks/resend', $payload);
+        $first = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
         $first->assertStatus(200);
         $first->assertJson(['status' => 'success']);
 
         // Duplicate second send
-        $second = $this->postJson('/webhooks/resend', $payload);
+        $second = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
         $second->assertStatus(200);
         $second->assertJson(['status' => 'duplicate']);
 
-        $this->assertEquals(1, WebhookEvent::where('idempotency_key', 'evt_unique_dedup_1002')->count());
+        $this->assertEquals(1, WebhookEvent::where('idempotency_key', 'resend:evt_unique_dedup_1002')->count());
     }
 
     public function test_hard_bounce_webhook_auto_suppresses_email_and_invalidates_lead(): void
@@ -132,7 +133,7 @@ class WebhookAndReplyTest extends TestCase
             'reason' => 'Mailbox does not exist (550 User Unknown)',
         ];
 
-        $response = $this->postJson('/webhooks/resend', $payload);
+        $response = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
 
         $response->assertStatus(200);
 
@@ -159,7 +160,7 @@ class WebhookAndReplyTest extends TestCase
             'email' => 'sconnor@acmeclouddynamics.com',
         ];
 
-        $response = $this->postJson('/webhooks/resend', $payload);
+        $response = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
         $response->assertStatus(200);
 
         $this->assertTrue(Suppression::isSuppressed('sconnor@acmeclouddynamics.com'));
@@ -179,7 +180,7 @@ class WebhookAndReplyTest extends TestCase
             'body' => 'Hi, thanks for reaching out. Yes, we are actively looking for Laravel developers to assist our upcoming release. Can we schedule a call next Tuesday at 2 PM EST?',
         ];
 
-        $response = $this->postJson('/webhooks/resend', $payload);
+        $response = $this->postJson('/webhooks/resend', $payload, $this->sig($payload));
         $response->assertStatus(200);
 
         $this->recipient->refresh();
@@ -193,5 +194,11 @@ class WebhookAndReplyTest extends TestCase
             'campaign_recipient_id' => $this->recipient->id,
             'classification' => 'meeting_request',
         ]);
+    }
+
+    /** HMAC-SHA256 of the JSON body, as a real provider would send it. */
+    protected function sig(array $payload): array
+    {
+        return ['X-Webhook-Signature' => hash_hmac('sha256', json_encode($payload), 'test-secret')];
     }
 }

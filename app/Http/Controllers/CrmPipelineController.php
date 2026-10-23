@@ -56,10 +56,13 @@ class CrmPipelineController extends Controller
         return view('crm.pipeline', compact('columnLeads', 'pipelineStages', 'salesReps', 'countries', 'assignedTo', 'country'));
     }
 
+    public const STAGES = ['new', 'researching', 'qualified', 'ready_for_review', 'contacted', 'replied', 'interested', 'meeting_booked', 'proposal_sent', 'negotiation', 'nurture', 'won', 'lost', 'not_a_fit', 'opted_out'];
+
     public function updateStage(Request $request, Lead $lead)
     {
+        $this->authorize('update', $lead);
         $data = $request->validate([
-            'lifecycle_stage' => ['required', 'string'],
+            'lifecycle_stage' => ['required', 'string', 'in:' . implode(',', self::STAGES)],
         ]);
 
         $oldStage = $lead->lifecycle_stage;
@@ -93,6 +96,11 @@ class CrmPipelineController extends Controller
             'priority' => ['required', 'in:low,medium,high,urgent'],
         ]);
 
+        if (!empty($data['lead_id'])) {
+            $this->authorize('update', Lead::findOrFail($data['lead_id']));
+        } elseif (!empty($data['company_id'])) {
+            $this->authorize('update', \App\Models\Company::findOrFail($data['company_id']));
+        }
         $task = Task::create($data);
         AuditLog::record('task_created', $task);
 
@@ -101,6 +109,7 @@ class CrmPipelineController extends Controller
 
     public function completeTask(Task $task)
     {
+        abort_unless(Auth::user()->isAdmin() || (int) $task->assigned_to === (int) Auth::id(), 403);
         $task->update([
             'status' => 'completed',
             'completed_at' => now(),
@@ -123,6 +132,7 @@ class CrmPipelineController extends Controller
             'outcome_notes' => ['nullable', 'string'],
         ]);
 
+        $this->authorize('update', Lead::findOrFail($data['lead_id']));
         $meeting = Meeting::create($data);
 
         // Auto move lead to meeting_booked
@@ -151,6 +161,10 @@ class CrmPipelineController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        $this->authorize('update', \App\Models\Company::findOrFail($data['company_id']));
+        if (!empty($data['lead_id'])) {
+            $this->authorize('update', Lead::findOrFail($data['lead_id']));
+        }
         $deal = Deal::create($data);
 
         if (!empty($data['lead_id'])) {

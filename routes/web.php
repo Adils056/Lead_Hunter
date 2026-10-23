@@ -19,7 +19,7 @@ Route::get('/', function () {
 
 // Authentication Routes
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+Route::post('/login', [AuthController::class, 'login'])->name('login.post')->middleware('throttle:5,1'); // 5 attempts/min per IP
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 // Self-service registration (LEADPILOT_ALLOW_REGISTRATION; the first account of a fresh install becomes admin)
 Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
@@ -29,7 +29,7 @@ Route::post('/register', [AuthController::class, 'register'])->name('register.po
 Route::match(['get', 'post'], '/unsubscribe', [CampaignController::class, 'unsubscribe'])->name('campaigns.unsubscribe')->middleware('throttle:30,1');
 
 // Inbound Email & Delivery Provider Webhooks (CSRF exempted)
-Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])->name('webhooks.handle');
+Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])->name('webhooks.handle')->middleware('throttle:60,1'); // HMAC-verified in the controller
 
 // Authenticated Application Routes
 Route::middleware(['auth'])->group(function () {

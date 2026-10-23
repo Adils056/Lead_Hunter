@@ -78,6 +78,7 @@ class BuyingSignalController extends Controller
             'verification_status' => ['required', 'in:unverified,verified,dismissed'],
         ]);
 
+        $this->authorize('update', Company::findOrFail($data['company_id']));
         $signal = BuyingSignal::create($data);
 
         // Auto re-score all leads under this company
@@ -100,6 +101,9 @@ class BuyingSignalController extends Controller
             'verification_status' => ['required', 'in:verified,unverified,dismissed'],
         ]);
 
+        if ($signal->company) {
+            $this->authorize('update', $signal->company);
+        }
         $signal->update(['verification_status' => $data['verification_status']]);
 
         // Re-score related company leads

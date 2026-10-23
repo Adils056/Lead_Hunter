@@ -293,8 +293,9 @@ class AutonomousOutreachAndDiscoveryTest extends TestCase
             'leadgen_id' => 'meta_lead_9999',
         ];
 
+        config(['leadpilot.webhooks.secret' => 'test-secret']);
         $response = $this->postJson('/webhooks/meta_ads', $metaPayload, [
-            'X-Webhook-Signature' => 'test_sig',
+            'X-Webhook-Signature' => hash_hmac('sha256', json_encode($metaPayload), 'test-secret'),
         ]);
 
         $response->assertStatus(200);

@@ -22,6 +22,7 @@ class ApiV1Test extends TestCase
             'role' => 'admin',
             'is_active' => true,
         ]);
+        $this->actingAs($this->admin); // the API is session-authenticated since the Phase 0 hotfix
     }
 
     public function test_api_v1_dashboard_returns_real_kpis(): void

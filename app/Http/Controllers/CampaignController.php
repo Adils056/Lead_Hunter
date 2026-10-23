@@ -185,9 +185,17 @@ class CampaignController extends Controller
 
     public function sendTestEmail(Request $request, Campaign $campaign)
     {
+        // Phase 0 hotfix: this used to be an open relay (any user, any address, no guard).
+        $this->authorize('update', $campaign);
+        abort_unless(Auth::user()?->isAdmin(), 403, 'Only administrators can send test e-mails.');
         $request->validate([
             'test_email' => ['required', 'email'],
         ]);
+        $allowed = \App\Models\User::where('role', 'admin')->where('is_active', true)->pluck('email')->map(fn ($e) => strtolower($e))
+            ->push(strtolower((string) \App\Models\OutreachSetting::current()->controlled_pilot_recipient))->filter()->all();
+        if (!in_array(strtolower(trim($request->input('test_email'))), $allowed, true)) {
+            return back()->withErrors(['test_email' => 'Test e-mails can only go to an active administrator address or the controlled-pilot recipient.'])->withInput();
+        }
 
         $sent = $this->deliveryService->sendTestEmail($campaign, $request->input('test_email'));
 

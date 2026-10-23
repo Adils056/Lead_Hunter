@@ -130,6 +130,12 @@ class CampaignOutreachTest extends TestCase
         $this->assertEquals('running', $campaign->status);
         $this->assertEquals('approved', $recipient->status);
 
+        // Phase 0: manual dispatch is blocked while the system is in DRY-RUN (the default mode)
+        $this->assertFalse($deliveryService->dispatchRecipient($recipient));
+        $this->assertStringContainsString('DRY-RUN', (string) $recipient->fresh()->error_message);
+        \App\Models\OutreachSetting::current()->update(['mode' => 'live']);
+        $recipient->update(['status' => 'approved', 'error_message' => null]);
+
         // Dispatch approved recipient
         $dispatched = $deliveryService->dispatchRecipient($recipient);
         $this->assertTrue($dispatched);
@@ -169,7 +175,12 @@ class CampaignOutreachTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->admin)->post("/campaigns/{$campaign->id}/test-email", [
-            'test_email' => 'admin-preview@leadpilot.test',
+            'test_email' => 'someone-else@example.com',
+        ]);
+        $response->assertSessionHasErrors('test_email'); // Phase 0: not an administrator address
+
+        $response = $this->actingAs($this->admin)->post("/campaigns/{$campaign->id}/test-email", [
+            'test_email' => $this->admin->email,
         ]);
 
         $response->assertSessionHas('success');

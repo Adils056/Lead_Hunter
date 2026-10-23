@@ -135,6 +135,13 @@ class CampaignDeliveryService
             if ($campaign->status !== 'running') {
                 return false;
             }
+            // Phase 0 hotfix: the global guard applies to MANUAL dispatch too (it used to apply to autopilot only, so an
+            // admin click in DRY-RUN or during an emergency stop still sent a real e-mail).
+            if ($lead && ($why = \App\Services\Outreach\OutreachGuard::blockReason('outreach', null, $lead->email))) {
+                $locked->update(['status' => 'skipped', 'error_message' => 'Blocked: ' . $why]);
+
+                return false;
+            }
 
             // v4: never send something awaiting approval, cancelled or rejected
             if (in_array($locked->status, ['pending_approval', 'cancelled', 'rejected'], true)) {

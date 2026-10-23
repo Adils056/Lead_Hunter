@@ -184,3 +184,7 @@ Guarded live re-test (same afternoon): `qwen2.5:3b` draft accepted on the 2nd tr
 - Login page hardening for the live server: the pre-filled `admin@leadpilot.test / password123` and the "Quick Login Credentials" buttons (and their script) now render only when `APP_ENV=local`.
 - Tests: `tests/Feature/RegistrationTest.php` (5). Full suite **152 tests / 1,205 assertions**.
 - Still the owner's job on the live server: the seeded demo users `sales@leadpilot.test` and `sarah@leadpilot.test` keep the password `password123` wherever the demo seeder ran — deactivate them or change their passwords (Settings → Users) before the site is public.
+
+### 5f. 23 Oct 2026, late evening: Phase 1 audit + Phase 0 hotfix
+
+Full prioritized audit (4 independent reviews, hand-verified P0s) in `docs/AUDIT_FINDINGS_2026-10-23.md` with a 6-phase plan (~20 working days). Verified live: `GET https://hunter.eziline.net/api/v1/leads` answered 200 with lead data to an anonymous caller. Phase 0 hotfix shipped the same evening (API auth, webhook HMAC, login throttle, CRM/signal authorization, test-e-mail lock-down, manual-dispatch guard, References-header fix, demo seeds gated). 157 tests / 1,248 assertions.

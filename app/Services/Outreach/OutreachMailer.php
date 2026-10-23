@@ -26,6 +26,23 @@ class OutreachMailer
         return route('campaigns.unsubscribe', ['email' => strtolower(trim($email)), 'token' => self::unsubscribeToken($email)]);
     }
 
+    /** "<a@x> <b@x>" (or bare ids) + the parent -> unique bare ids, oldest first. Fixes touch 3+ (RFC 2822 addr-spec error). */
+    public static function messageIds(string $references, ?string $inReplyTo = null): array
+    {
+        $ids = [];
+        foreach (preg_split('/\s+/', trim($references)) ?: [] as $token) {
+            $token = trim($token, " <>\t\r\n");
+            if ($token !== '') {
+                $ids[] = $token;
+            }
+        }
+        if ($inReplyTo) {
+            $ids[] = trim($inReplyTo, ' <>');
+        }
+
+        return array_values(array_unique($ids));
+    }
+
     public function newMessageId(): string
     {
         $from = (string) config('mail.from.address', 'leadpilot@localhost');
@@ -53,8 +70,8 @@ class OutreachMailer
             $h->addTextHeader('List-Unsubscribe', "<{$unsub}>, <mailto:{$replyTo}?subject=unsubscribe>");
             $h->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
             if ($inReplyTo) {
-                $h->addIdHeader('In-Reply-To', $inReplyTo);
-                $h->addIdHeader('References', array_values(array_filter(array_unique(array_merge(preg_split('/\s+/', trim((string) $references, " <>")) ?: [], [$inReplyTo])))));
+                $h->addIdHeader('In-Reply-To', trim($inReplyTo, ' <>')); // tolerate ids given with or without angle brackets
+                $h->addIdHeader('References', self::messageIds((string) $references, $inReplyTo));
             }
         });
 
