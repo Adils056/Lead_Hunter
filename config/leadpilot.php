@@ -219,6 +219,17 @@ return [
     // Needs outbound TCP 25; when the network blocks it (most home ISPs) the check reports "not probed" and falls back to MX.
     'smtp_probe' => (bool) env('LEADPILOT_SMTP_PROBE', true),
 
+    // Verification waterfall: cache -> free SMTP probe -> Hunter (only for MX-only/unknown results, within budget).
+    'email_verification' => [
+        'hunter_escalation' => (bool) env('LEADPILOT_HUNTER_ESCALATION', true),
+        // mx_only / unknown results are re-checked after this many hours (proven results are cached 30 days).
+        'inconclusive_cache_hours' => (int) env('LEADPILOT_EMAIL_RECHECK_HOURS', 24),
+        // Port 25 counts as blocked only when this known-good MX also refuses (e.g. gmail-smtp-in.l.google.com) ...
+        'port25_canary' => env('LEADPILOT_SMTP_CANARY'),
+        // ... or, with no canary, after this many distinct domains refused within an hour.
+        'port25_block_threshold' => (int) env('LEADPILOT_PORT25_BLOCK_THRESHOLD', 3),
+    ],
+
     // Inbound webhooks: HMAC-SHA256 of the raw body with this secret (or the provider integration's webhook_secret).
     // No secret configured = every webhook is rejected with 503 (fail closed).
     'webhooks' => [

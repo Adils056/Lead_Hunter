@@ -97,7 +97,7 @@
                 <div>
                     <div class="metric-label">Verified Emails</div>
                     <div class="metric-val text-info">{{ number_format($verifiedEmails) }}</div>
-                    <div class="small text-muted mt-1">Deliverable via MX/SMTP checks</div>
+                    <div class="small text-muted mt-1">Mailbox confirmed (SMTP probe or Hunter)@if($mxOnlyEmails) · {{ number_format($mxOnlyEmails) }} MX-only, unproven @endif</div>
                 </div>
                 <div class="icon-box bg-info-subtle text-info">
                     <i class="bi bi-patch-check-fill"></i>

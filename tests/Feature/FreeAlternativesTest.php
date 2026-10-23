@@ -115,13 +115,13 @@ class FreeAlternativesTest extends TestCase
         $this->assertSame(['invalid', 5, 'smtp_check'], [$v['status'], $v['score'], $v['provider']]);
 
         $v = $this->verifier(['result' => 'catch_all', 'code' => 250])->verifyEmail('anyone@catchall.pk');
-        $this->assertSame(['risky', 60], [$v['status'], $v['score']]);
+        $this->assertSame(['catch_all', 60], [$v['status'], $v['score']]);
 
         $v = $this->verifier(['result' => 'blocked'])->verifyEmail('owner@firm.pk');
-        $this->assertSame(['verified', 85, 'dns_check', false], [$v['status'], $v['score'], $v['provider'], $v['has_smtp_check']], 'port 25 blocked: MX-level result, clearly not an SMTP check');
+        $this->assertSame(['mx_only', 50, 'dns_check', false], [$v['status'], $v['score'], $v['provider'], $v['has_smtp_check']], 'port 25 blocked: MX-level result, never "verified"');
 
         $v = $this->verifier(['result' => 'blocked'])->verifyEmail('dentist@gmail.com');
-        $this->assertSame(['risky', 55, true], [$v['status'], $v['score'], $v['is_free_mailbox']]);
+        $this->assertSame(['mx_only', 40, true], [$v['status'], $v['score'], $v['is_free_mailbox']]);
 
         $v = $this->verifier(['result' => 'deliverable', 'code' => 250])->verifyEmail('dentist2@gmail.com');
         $this->assertSame(['verified', 80], [$v['status'], $v['score']], 'a probed free mailbox is verified');

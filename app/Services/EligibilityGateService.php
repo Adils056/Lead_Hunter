@@ -8,6 +8,7 @@ use App\Models\EmailLog;
 use App\Models\Lead;
 use App\Models\OutreachSetting;
 use App\Models\Suppression;
+use App\Support\EmailStatus;
 use Carbon\Carbon;
 
 class EligibilityGateService
@@ -80,10 +81,13 @@ class EligibilityGateService
         $email = strtolower(trim($lead->email ?? ''));
         if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $result->fail('email_verification', "Missing or syntactically invalid email address.", 'not_a_fit');
-        } elseif ($settings->require_verified_email && !in_array($lead->email_verification_status, ['verified', 'risky'])) {
-            $result->fail('email_verification', "Email status is '{$lead->email_verification_status}'. Policy requires verified deliverable email.", 'ready_for_review');
+        } elseif ($settings->require_verified_email && !EmailStatus::isSendable($lead->email_verification_status, $settings)) {
+            $result->fail('email_verification', "Email status is '" . EmailStatus::label($lead->email_verification_status) . "'. Policy requires a mailbox confirmed by an SMTP probe or Hunter"
+                . ($lead->email_verification_status === EmailStatus::MX_ONLY ? ' (MX-only addresses are allowed only when switched on in Settings).' : '.'), 'ready_for_review');
+        } elseif (!$settings->require_verified_email) {
+            $result->pass('email_verification', 'Email verification not required by policy (status: ' . EmailStatus::label($lead->email_verification_status) . ').');
         } else {
-            $result->pass('email_verification', "Email verified deliverable ({$lead->email_verification_status}).");
+            $result->pass('email_verification', 'Email sendable (' . EmailStatus::label($lead->email_verification_status) . ').');
         }
 
         // 5b. Contact identity (v3): no automated outreach to unknown / shared / tender contacts.

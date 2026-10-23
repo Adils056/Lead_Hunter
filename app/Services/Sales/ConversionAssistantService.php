@@ -151,7 +151,7 @@ class ConversionAssistantService
             'warnings' => array_values(array_filter([
                 !$lead->email ? 'No email address on record — use phone or find the decision-maker first.' : null,
                 $lead->contact_status === 'generic_inbox' ? 'Going to a shared inbox; a named decision-maker usually responds better.' : null,
-                $lead->email_verification_status !== 'verified' && $lead->email ? 'Email not verified — verify before sending.' : null,
+                $lead->email && !\App\Support\EmailStatus::isSendable($lead->email_verification_status) ? 'Email not confirmed (' . \App\Support\EmailStatus::label($lead->email_verification_status) . ') — verify before sending.' : null,
             ])),
         ];
     }

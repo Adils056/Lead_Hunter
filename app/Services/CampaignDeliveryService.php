@@ -9,6 +9,7 @@ use App\Models\EmailLog;
 use App\Models\Lead;
 use App\Models\Suppression;
 use App\Models\UsageLog;
+use App\Support\EmailStatus;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -51,7 +52,7 @@ class CampaignDeliveryService
 
         // Respect contact rules
         if ($campaign->contact_rules['require_verified_email'] ?? true) {
-            $query->where('email_verification_status', 'verified');
+            $query->whereIn('email_verification_status', EmailStatus::sendableStatuses());
         }
 
         $leads = $query->get();

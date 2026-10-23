@@ -191,7 +191,13 @@ class Lead extends Model
 
     public function isVerifiedEmail(): bool
     {
-        return $this->email_verification_status === 'verified';
+        return $this->email_verification_status === \App\Support\EmailStatus::VERIFIED;
+    }
+
+    /** May outreach go to this address under the current verification policy (see EmailStatus::isSendable). */
+    public function hasSendableEmail(): bool
+    {
+        return \App\Support\EmailStatus::isSendable($this->email_verification_status);
     }
 
     public function isSuppressed(): bool
@@ -214,7 +220,7 @@ class Lead extends Model
 
     public function canReceiveOutreach(): bool
     {
-        if (!$this->isVerifiedEmail()) {
+        if (!$this->hasSendableEmail()) {
             return false;
         }
 

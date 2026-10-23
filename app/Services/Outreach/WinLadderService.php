@@ -10,6 +10,7 @@ use App\Services\EligibilityGateService;
 use App\Services\LeadScoringService;
 use App\Services\Sales\OfferRecommender;
 use App\Support\ScoreBands;
+use App\Support\EmailStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -124,10 +125,13 @@ class WinLadderService
         }
 
         // Can we reach them
-        if ($lead->email_verification_status === 'verified') {
+        $emailStatus = $lead->email_verification_status;
+        if ($emailStatus === EmailStatus::VERIFIED) {
             $add(100, 'Email verified deliverable');
-        } elseif (in_array($lead->email_verification_status, ['risky', 'catch_all'], true)) {
+        } elseif (in_array($emailStatus, [EmailStatus::RISKY, EmailStatus::CATCH_ALL], true)) {
             $add(40, 'Email risky / catch-all');
+        } elseif ($emailStatus === EmailStatus::MX_ONLY && EmailStatus::isSendable($emailStatus, $settings)) {
+            $add(20, 'Email domain accepts mail (mailbox not probed)');
         }
         if ($lead->phone ?: $company?->public_phone) {
             $add(10, 'Phone number known');
@@ -182,7 +186,7 @@ class WinLadderService
         if ($declined) {
             return $this->rung('D', $points, $reasons, ['Prospect declined'], 'Do not email for at least 6 months; then only with a new trigger.');
         }
-        if ($lead->email_verification_status === 'invalid') {
+        if ($lead->email_verification_status === EmailStatus::INVALID) {
             return $this->rung('D', $points, $reasons, ['Email address is invalid / non-deliverable'], 'Find another address (website, LinkedIn, phone call) before any contact.');
         }
         $allowed = $settings->allowed_countries ?: ['Pakistan', 'United States', 'United Kingdom', 'Canada', 'Australia', 'Germany'];

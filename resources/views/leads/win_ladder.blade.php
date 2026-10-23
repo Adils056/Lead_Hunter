@@ -91,7 +91,7 @@
                     <td class="small">
                         @if($lead->email)
                             <div>{{ $lead->email }}</div>
-                            <span class="badge {{ $lead->email_verification_status === 'verified' ? 'bg-success-subtle text-success' : (in_array($lead->email_verification_status, ['risky','catch_all']) ? 'bg-warning-subtle text-warning' : ($lead->email_verification_status === 'invalid' ? 'bg-danger-subtle text-danger' : 'bg-secondary-subtle text-secondary')) }}" style="font-size:.7rem">{{ ucfirst($lead->email_verification_status) }}</span>
+                            <span class="badge {{ \App\Support\EmailStatus::badgeClass($lead->email_verification_status) }}" style="font-size:.7rem">{{ \App\Support\EmailStatus::label($lead->email_verification_status) }}</span>
                             <span class="badge bg-light text-dark border" style="font-size:.7rem">{{ str_replace('_', ' ', $lead->contact_status ?? 'identified') }}</span>
                         @else
                             <span class="text-muted">No email</span>

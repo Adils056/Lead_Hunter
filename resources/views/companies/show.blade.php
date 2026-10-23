@@ -209,8 +209,8 @@
                     <div class="small mt-2 d-flex align-items-center gap-1">
                         <i class="bi bi-envelope text-muted"></i>
                         <span class="text-muted">{{ $lead->email }}</span>
-                        <span class="badge {{ $lead->email_verification_status === 'verified' ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning' }} ms-auto" style="font-size: 0.65rem;">
-                            {{ ucfirst($lead->email_verification_status) }}
+                        <span class="badge {{ \App\Support\EmailStatus::badgeClass($lead->email_verification_status) }} ms-auto" style="font-size: 0.65rem;">
+                            {{ \App\Support\EmailStatus::label($lead->email_verification_status) }}
                         </span>
                     </div>
                     @endif
