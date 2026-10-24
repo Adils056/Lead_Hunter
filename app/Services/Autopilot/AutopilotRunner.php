@@ -105,7 +105,9 @@ class AutopilotRunner
                     // the probe could not reach the mailbox and the budget allows it. MX-only results are retried
                     // once the inconclusive cache window has passed.
                     $recheckBefore = now()->subHours((int) config('leadpilot.email_verification.inconclusive_cache_hours', 24));
-                    $leads = Lead::where('contact_status', 'identified')->whereNotNull('email')
+                    // Business inboxes (info@ from OSM/Overture) are verified too: the free check costs nothing, and
+                    // whether they may be emailed is the gate's call (allow_shared_inbox), not this step's.
+                    $leads = Lead::whereIn('contact_status', ['identified', 'generic_inbox'])->whereNotNull('email')
                         ->where(fn ($q) => $q->where('email_verification_status', EmailStatus::UNVERIFIED)
                             ->orWhere(fn ($q) => $q->whereIn('email_verification_status', [EmailStatus::MX_ONLY, EmailStatus::UNKNOWN])
                                 ->where(fn ($q) => $q->whereNull('last_verified_at')->orWhere('last_verified_at', '<', $recheckBefore))))
