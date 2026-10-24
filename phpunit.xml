@@ -23,6 +23,8 @@
         <env name="OVERTURE_DUCKDB_BIN" value="/nonexistent/duckdb-not-installed-in-tests"/>
         <env name="LEADPILOT_OLLAMA_ENABLED" value="false"/>
         <env name="LEADPILOT_SMTP_PROBE" value="false"/>
+        <!-- tests define their own ICPs; AutoMarketTest switches this on where it is under test -->
+        <env name="LEADPILOT_AUTO_MARKET" value="false"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

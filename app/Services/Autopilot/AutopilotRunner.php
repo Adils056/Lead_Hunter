@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Lead;
 use App\Services\Audit\WebsiteAuditService;
 use App\Services\EmailVerificationService;
+use App\Services\Hunting\AutoMarketService;
 use App\Services\Hunting\LeadHuntService;
 use App\Services\LeadScoringService;
 use App\Services\Mail\ReplySyncService;
@@ -61,6 +62,13 @@ class AutopilotRunner
                     return 'paused or not automatic';
                 }
                 $done = [];
+                if (config('leadpilot.auto_market.enabled') && !$dryRun && !Cache::has('auto_market_synced')) {
+                    $sync = app(AutoMarketService::class)->sync();
+                    Cache::put('auto_market_synced', now()->toIso8601String(), now()->addDay());
+                    if ($sync['created']) {
+                        $done[] = "Auto Market: {$sync['created']} target profile(s) created";
+                    }
+                }
                 foreach (app(SearchAllocator::class)->pick((int) $cfg['discovery_runs_per_cycle']) as $arm) {
                     if ($dryRun) {
                         $done[] = "would run {$arm['slug']} for ICP #{$arm['icp']->id}";
