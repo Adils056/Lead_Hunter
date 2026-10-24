@@ -232,6 +232,18 @@ class EmailVerificationTruthTest extends TestCase
         $this->assertSame(EmailStatus::VERIFIED, $lead->fresh()->email_verification_status);
     }
 
+    public function test_autopilot_verifies_business_inbox_leads_too(): void
+    {
+        $inbox = $this->lead(EmailStatus::UNVERIFIED); // contact_status generic_inbox, as OSM/Overture leads are
+        $this->app->instance(EmailVerificationService::class, $this->verifier(['result' => 'deliverable', 'code' => 250]));
+        Http::fake();
+
+        $out = app(\App\Services\Autopilot\AutopilotRunner::class)->run();
+
+        $this->assertSame(1, $out['steps']['enrichment']['result']['verified']);
+        $this->assertSame(EmailStatus::VERIFIED, $inbox->fresh()->email_verification_status);
+    }
+
     public function test_dashboard_counts_only_proven_mailboxes_as_verified(): void
     {
         $this->lead(EmailStatus::VERIFIED);
