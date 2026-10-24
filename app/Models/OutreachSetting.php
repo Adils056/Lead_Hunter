@@ -115,6 +115,16 @@ class OutreachSetting extends Model
         ]);
     }
 
+    /** Autopilot first touches per day: the warm-up cap for the first `ramp.days` after going live, then the full cap. */
+    public function firstTouchCap(): int
+    {
+        $cap = (int) config('leadpilot.autopilot.max_first_touch_per_day', 25);
+        $ramp = (array) config('leadpilot.autopilot.ramp', []);
+        $warming = !$this->activated_at || $this->activated_at->gt(now()->subDays((int) ($ramp['days'] ?? 0)));
+
+        return $warming && isset($ramp['cap']) ? min($cap, (int) $ramp['cap']) : $cap;
+    }
+
     public function isDryRun(): bool
     {
         return $this->mode === 'dry_run';

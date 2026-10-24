@@ -44,6 +44,8 @@ class OutreachAutomationController extends Controller
             'United Kingdom' => 'United Kingdom (Europe)',
             'Canada' => 'Canada (North America)',
             'Australia' => 'Australia (Oceania)',
+            'United Arab Emirates' => 'United Arab Emirates (Gulf)',
+            'Saudi Arabia' => 'Saudi Arabia (Gulf)',
             'Germany' => 'Germany (European Union)',
         ];
 

@@ -334,6 +334,40 @@ Artisan::command('leadpilot:places-purge {--days= : Override retention days}', f
 
 Schedule::command('leadpilot:places-purge')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 
+Artisan::command('leadpilot:go-autonomous {--live : Also switch outreach mode to live (otherwise it stays as it is)}', function (\App\Services\Hunting\AutoMarketService $market, \App\Services\Autopilot\AutonomyPolicyService $policy) {
+    // One switch for "find the market, qualify, and send on its own", with the guardrails kept on.
+    $settings = \App\Models\OutreachSetting::current();
+    $countries = array_keys((array) config('leadpilot.auto_market.countries', []));
+    $settings->update([
+        'allowed_countries' => $countries,
+        'require_verified_email' => true,
+        'allow_mx_only' => false,
+        'allow_shared_inbox' => true, // local businesses publish one inbox (info@); tender contacts stay excluded
+        'max_daily_sends' => max(1, (int) config('leadpilot.autopilot.max_first_touch_per_day', 25)),
+        'emergency_stop' => false,
+    ] + ($this->option('live') ? ['mode' => 'live', 'activated_at' => now()] : []));
+    foreach (['discovery.free', 'enrichment.audit', 'enrichment.verify_email', 'scoring.run', 'drafting.ai', 'outreach.first_touch', 'outreach.follow_up'] as $action) {
+        $policy->set($action, 'automatic');
+    }
+    \App\Models\Campaign::where('is_autopilot', true)->update(['require_approval' => false]);
+    $sync = $market->sync();
+    \Illuminate\Support\Facades\Cache::put('auto_market_synced', now()->toIso8601String(), now()->addDay());
+    $settings->refresh();
+
+    $this->table(['Setting', 'Value'], [
+        ['Target countries', implode(', ', $countries)],
+        ['Auto Market profiles', "{$sync['active']} active ({$sync['created']} new)"],
+        ['First email', 'automatic (Win Ladder rung A, sendable email only, suppression always honoured)'],
+        ['First emails per day', $settings->firstTouchCap() . ' now, ' . (int) config('leadpilot.autopilot.max_first_touch_per_day', 25) . ' after the warm-up'],
+        ['Outreach mode', $settings->mode],
+    ]);
+    if ($settings->mode !== 'live') {
+        $this->warn('Mode is still ' . $settings->mode . ': leads are found, verified, scored and drafted, but nothing is sent. Run again with --live when ready.');
+    }
+
+    return 0;
+})->purpose('Fully autonomous mode: auto-build targets, verify, score and send first emails within the guardrails');
+
 Artisan::command('leadpilot:reverify-emails {--status=mx_only : Comma-separated statuses to re-check} {--limit=200}', function (\App\Services\EmailVerificationService $verifier) {
     // P0-3 follow-up: re-runs the verification waterfall (cache bypassed) for leads whose mailbox was never proven.
     $statuses = array_values(array_intersect(array_map('trim', explode(',', (string) $this->option('status'))), \App\Support\EmailStatus::ALL));

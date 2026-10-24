@@ -34,7 +34,7 @@ class IcpProfile extends Model
     ];
 
     protected $fillable = [
-        'name', 'description', 'is_active',
+        'name', 'auto_key', 'description', 'is_active',
         'countries', 'regions', 'cities', 'industries', 'niches', 'company_sizes', 'business_types',
         'target_services', 'website_requirement', 'tech_include', 'tech_exclude', 'pain_points', 'keywords',
         'min_purchase_ability', 'contact_roles', 'min_lead_score', 'min_google_rating', 'min_review_count',

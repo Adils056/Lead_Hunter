@@ -50,7 +50,7 @@ class SequenceEngine
                 'name' => 'Autopilot — ' . ($icp?->name ?? 'General'),
                 'service_offered' => $service,
                 'min_lead_score' => ScoreBands::qualified(),
-                'daily_limit' => (int) config('leadpilot.autopilot.max_first_touch_per_day', 10),
+                'daily_limit' => (int) config('leadpilot.autopilot.max_first_touch_per_day', 25),
                 'require_approval' => !$this->policy->isAutomatic('outreach.first_touch'),
                 'status' => 'running',
                 'timezone' => config('leadpilot.timezone'),
@@ -210,7 +210,7 @@ class SequenceEngine
         }
         $firstToday = CampaignRecipient::where('sequence_step', 1)->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->where('sent_at', '>=', now(config('leadpilot.timezone'))->startOfDay()->utc())->count();
-        $cap = (int) config('leadpilot.autopilot.max_first_touch_per_day', 10);
+        $cap = OutreachSetting::current()->firstTouchCap();
 
         $due = CampaignRecipient::with('campaign', 'lead')->where('status', 'approved')
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))

@@ -316,9 +316,39 @@ return [
         'discovery_runs_per_cycle' => 2,
         'audits_per_cycle' => 10,
         'drafts_per_cycle' => 10,
-        'max_first_touch_per_day' => (int) env('LEADPILOT_MAX_FIRST_TOUCH_PER_DAY', 10), // conservative pilot
+        'max_first_touch_per_day' => (int) env('LEADPILOT_MAX_FIRST_TOUCH_PER_DAY', 25),
+        // Warm-up: for the first `days` after outreach went live, first touches are capped at `cap` per day.
+        'ramp' => ['days' => (int) env('LEADPILOT_RAMP_DAYS', 3), 'cap' => (int) env('LEADPILOT_RAMP_CAP', 10)],
         'sending_hours' => [9, 17],         // local time, Mon-Fri
         'sending_days' => [1, 2, 3, 4, 5],
+    ],
+
+    // Auto Market: the autopilot builds its own Ideal Customer Profiles (country x segment) so nobody has to type
+    // targets in. The allocator then learns which country/segment/source combinations produce qualified leads.
+    // Countries = where B2B cold email is lawful without prior consent (EU/GDPR and Canada/CASL deliberately excluded).
+    'auto_market' => [
+        'enabled' => (bool) env('LEADPILOT_AUTO_MARKET', true),
+        'countries' => [
+            'Pakistan' => ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad'],
+            'United States' => ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Dallas'],
+            'United Kingdom' => ['London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow'],
+            'United Arab Emirates' => ['Dubai', 'Abu Dhabi', 'Sharjah'],
+            'Saudi Arabia' => ['Riyadh', 'Jeddah', 'Dammam'],
+            'Australia' => ['Sydney', 'Melbourne', 'Brisbane', 'Perth'],
+        ],
+        // niches are OSM/Wikidata search words; services are keys of `services` above.
+        'segments' => [
+            'clinics' => ['label' => 'Clinics & healthcare', 'niches' => ['dentist', 'clinic', 'physio', 'skin'], 'services' => ['web_redesign', 'seo_technical'], 'type' => 'local_business'],
+            'beauty' => ['label' => 'Salons, beauty & gyms', 'niches' => ['salon', 'beauty', 'gym'], 'services' => ['web_redesign', 'conversion_optimization'], 'type' => 'local_business'],
+            'food' => ['label' => 'Restaurants & cafes', 'niches' => ['restaurant', 'cafe', 'bakery'], 'services' => ['web_dev', 'ecommerce'], 'type' => 'local_business'],
+            'hospitality' => ['label' => 'Hotels & travel', 'niches' => ['hotel', 'travel'], 'services' => ['web_redesign', 'conversion_optimization'], 'type' => 'local_business'],
+            'property' => ['label' => 'Real estate & construction', 'niches' => ['real estate', 'property', 'construction'], 'services' => ['web_redesign', 'custom_software'], 'type' => 'local_business'],
+            'professional' => ['label' => 'Law, accounting & architects', 'niches' => ['lawyer', 'accountant', 'architect', 'insurance'], 'services' => ['web_redesign', 'seo_technical'], 'type' => 'local_business'],
+            'education' => ['label' => 'Schools & academies', 'niches' => ['school', 'college', 'academy'], 'services' => ['web_dev', 'custom_software'], 'type' => 'local_business'],
+            'retail' => ['label' => 'Retail & showrooms', 'niches' => ['furniture', 'clothes', 'jewel', 'electronics', 'car'], 'services' => ['ecommerce', 'erp_pos'], 'type' => 'local_business'],
+            'b2b' => ['label' => 'Companies (B2B)', 'niches' => ['software company', 'it company', 'marketing agency', 'logistics'], 'services' => ['custom_software', 'laravel_php'], 'type' => 'b2b'],
+            'tenders' => ['label' => 'Public tenders', 'niches' => [], 'services' => ['web_dev', 'custom_software'], 'type' => 'government', 'countries' => ['United Kingdom']],
+        ],
     ],
 
     // API keys read via config so `php artisan config:cache` keeps working
