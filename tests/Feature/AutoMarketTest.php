@@ -74,6 +74,17 @@ class AutoMarketTest extends TestCase
         $this->assertGreaterThan(0, IcpProfile::where('auto_key', 'like', 'pakistan:%')->count());
     }
 
+    public function test_status_command_fails_on_a_stalled_cron_and_passes_when_everything_beats(): void
+    {
+        $this->artisan('leadpilot:status')->expectsOutputToContain('FAILING')->assertExitCode(1);
+
+        foreach (['scheduler', 'queue_worker'] as $c) {
+            \App\Models\SystemHeartbeat::create(['component' => $c, 'beat_at' => now(), 'meta' => []]);
+        }
+        \App\Models\SystemHeartbeat::create(['component' => 'autopilot', 'beat_at' => now(), 'meta' => ['ok' => true]]);
+        $this->artisan('leadpilot:status')->expectsOutputToContain('No failures')->assertExitCode(0);
+    }
+
     public function test_first_touch_cap_warms_up_after_going_live(): void
     {
         config(['leadpilot.autopilot.max_first_touch_per_day' => 25, 'leadpilot.autopilot.ramp' => ['days' => 3, 'cap' => 10]]);
