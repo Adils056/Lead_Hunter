@@ -24,11 +24,36 @@ class AutoMarketService
         $wanted = [];
         $created = 0;
 
+        $approved = array_values(array_filter(array_keys($countries), fn ($c) => in_array($c, $allowed, true)));
+        foreach ((array) ($cfg['segments'] ?? []) as $key => $seg) {
+            if (empty($seg['global']) || !$approved) {
+                continue;
+            }
+            // Country-independent sources (hiring announcements): one profile spanning every approved country.
+            $autoKey = "global:{$key}";
+            $wanted[] = $autoKey;
+            $icp = IcpProfile::withTrashed()->firstOrNew(['auto_key' => $autoKey]);
+            if (!$icp->exists) {
+                $icp->fill([
+                    'name' => "Auto · {$seg['label']} · all approved countries",
+                    'description' => 'Created by Auto Market. Edit or switch off freely; it will not be re-created or overwritten.',
+                    'is_active' => true, 'countries' => $approved, 'cities' => [], 'niches' => (array) ($seg['niches'] ?? []),
+                    'business_types' => [$seg['type'] ?? 'b2b'], 'target_services' => (array) ($seg['services'] ?? []),
+                    'sources' => (array) ($seg['sources'] ?? []), 'website_requirement' => 'any', 'channels' => ['email'],
+                    'min_lead_score' => 50, 'max_results_per_run' => 25, 'exclude_existing_customers' => true, 'objective' => 'auto_market',
+                ])->save();
+                $created++;
+            }
+        }
+
         foreach ($countries as $country => $cities) {
             if (!in_array($country, $allowed, true)) {
                 continue;
             }
             foreach ((array) ($cfg['segments'] ?? []) as $key => $seg) {
+                if (!empty($seg['global'])) {
+                    continue;
+                }
                 if (isset($seg['countries']) && !in_array($country, (array) $seg['countries'], true)) {
                     continue;
                 }

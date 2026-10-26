@@ -30,6 +30,8 @@ class Company extends Model
         'tech_stack',
         'source_url',
         'source_provider',
+        'ats_board',
+        'ats_checked_at',
         'discovery_date',
         'last_verified_at',
         'status',
@@ -54,6 +56,7 @@ class Company extends Model
             'last_verified_at' => 'datetime',
             'ai_researched_at' => 'datetime',
             'website_audited_at' => 'datetime',
+            'ats_checked_at' => 'datetime',
             'google_rating' => 'float',
         ];
     }

@@ -19,11 +19,14 @@ class AutoMarketTest extends TestCase
     {
         OutreachSetting::current()->update(['allowed_countries' => ['Pakistan', 'United Kingdom']]);
         $svc = app(AutoMarketService::class);
-        $segments = count(config('leadpilot.auto_market.segments'));
+        $perCountry = collect(config('leadpilot.auto_market.segments'))->reject(fn ($s) => !empty($s['global']))->count();
 
         $first = $svc->sync();
-        // tenders apply to the UK only
-        $this->assertSame(($segments - 1) + $segments, $first['created']);
+        // tenders apply to the UK only; the hiring profile is one for all approved countries
+        $this->assertSame(($perCountry - 1) + $perCountry + 1, $first['created']);
+        $hiring = IcpProfile::where('auto_key', 'global:hiring')->firstOrFail();
+        $this->assertEqualsCanonicalizing(['Pakistan', 'United Kingdom'], $hiring->countries);
+        $this->assertSame(['hn_hiring', 'ats_watchlist'], array_keys(app(IcpSearchConfigBuilder::class)->build($hiring)));
         $this->assertSame(0, $svc->sync()['created'], 're-sync never duplicates');
 
         $clinics = IcpProfile::where('auto_key', AutoMarketService::key('Pakistan', 'clinics'))->firstOrFail();

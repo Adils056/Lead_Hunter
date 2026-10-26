@@ -23,7 +23,8 @@ class ProviderRegistry
         'uk_contracts_finder' => ['UK Contracts Finder', 'procurement', false, 0, 'https://www.contractsfinder.service.gov.uk/apidocumentation', 'No key.'],
         'uk_find_a_tender' => ['UK Find a Tender', 'procurement', false, 0, 'https://www.find-tender.service.gov.uk/apidocumentation/1.0/GET-ocdsReleasePackages', 'No key.'],
         'eu_ted' => ['EU TED (Tenders Electronic Daily)', 'procurement', false, 0, 'https://docs.ted.europa.eu/api/latest/index.html', 'No key for search.'],
-        'ats_watchlist' => ['Greenhouse / Lever job boards', 'hiring_signals', false, 0, 'https://developers.greenhouse.io/job-board.html', 'No key; add watchlist entries to an ICP.'],
+        'ats_watchlist' => ['Company job boards (Greenhouse / Lever / Ashby / Workable)', 'hiring_signals', false, 0, 'https://developers.greenhouse.io/job-board.html', 'No key. Boards are found automatically by website audits; manual entries ("greenhouse:token") in an ICP also work.'],
+        'hn_hiring' => ['Hacker News: Who is hiring', 'hiring_signals', false, 0, 'https://hn.algolia.com/api', 'No key. Monthly thread via the official Algolia HN API.'],
         'public_job_demand' => ['Remotive', 'hiring_signals', false, 0, 'https://github.com/remotive-com/remote-jobs-api', 'Disabled: terms forbid lead collection.'],
         'wikidata_orgs' => ['Wikidata organisations', 'b2b_discovery', false, 0, 'https://query.wikidata.org/', 'No key. CC0 data: companies by industry + country with official website.'],
         'apollo_orgs' => ['Apollo.io Organizations', 'b2b_discovery', true, 1, 'https://docs.apollo.io/', 'Add API key in Integrations.'],
@@ -51,7 +52,7 @@ class ProviderRegistry
     public function isConfigured(string $slug): bool
     {
         return match ($slug) {
-            'osm_overpass', 'wikidata_orgs', 'uk_contracts_finder', 'uk_find_a_tender', 'eu_ted', 'ats_watchlist', 'dns_mx' => true,
+            'osm_overpass', 'wikidata_orgs', 'uk_contracts_finder', 'uk_find_a_tender', 'eu_ted', 'ats_watchlist', 'hn_hiring', 'dns_mx' => true,
             'ollama' => $this->ollamaReachable(),
             'overture_places' => is_file((string) config('leadpilot.sources.overture_places.duckdb_bin')),
             'public_job_demand' => (bool) config('leadpilot.sources.remotive.enabled'),
