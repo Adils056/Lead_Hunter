@@ -50,6 +50,46 @@ class HiringSignalsTest extends TestCase
         $this->assertSame(2, $r->excludedCount, 'agency refusal and Germany are skipped');
     }
 
+    public function test_seeking_freelancer_posts_become_explicit_requests_named_after_the_posters_site(): void
+    {
+        Http::fake([
+            'hn.algolia.com/api/v1/search_by_date*' => Http::response(['hits' => [
+                ['objectID' => '999', 'title' => 'Ask HN: Who is hiring? (October 2026)'],
+                ['objectID' => '998', 'title' => 'Ask HN: Freelancer? Seeking freelancer? (October 2026)'],
+            ]]),
+            'hn.algolia.com/api/v1/items/999' => Http::response(['children' => []]),
+            'hn.algolia.com/api/v1/items/998' => Http::response(['children' => [
+                ['id' => 7, 'text' => 'SEEKING FREELANCER | London, UK | Remote<p>We need a Laravel developer to rebuild our booking app. Contact tom@harbourclinic.co.uk'],
+                ['id' => 8, 'text' => 'SEEKING WORK | Lahore, Pakistan | Laravel and PHP developer, me@gmail.com'], // a freelancer, not a buyer
+            ]]),
+        ]);
+
+        $r = (new HnWhoIsHiringAdapter())->discover(['countries' => ['United Kingdom', 'Pakistan'], 'limit' => 10]);
+
+        $this->assertSame(1, $r->newCompaniesCount, json_encode($r->errors));
+        $c = Company::where('external_id', 'hn:7')->firstOrFail();
+        $this->assertSame(['Harbourclinic', 'https://harbourclinic.co.uk'], [$c->name, $c->website]);
+        $this->assertSame('vendor_request', BuyingSignal::where('company_id', $c->id)->value('signal_type'));
+    }
+
+    public function test_a_company_asking_for_developers_scores_into_email_now(): void
+    {
+        $this->artisan('leadpilot:go-autonomous', ['--live' => true]);
+        $c = Company::create(['name' => 'Bloom Dental', 'website' => 'https://bloomdental.com', 'domain' => 'bloomdental.com', 'country' => 'United States']);
+        BuyingSignal::create(['company_id' => $c->id, 'signal_type' => 'developer_hiring', 'title' => 'Hiring developers (Hacker News)', 'confidence' => 85,
+            'source_url' => 'https://news.ycombinator.com/item?id=1', 'evidence_text' => 'Senior Laravel developer, Austin TX', 'relevant_service' => 'laravel_php',
+            'observed_date' => now()->toDateString(), 'expiry_date' => now()->addDays(45)->toDateString()]);
+        $lead = Lead::create(['company_id' => $c->id, 'full_name' => 'Bloom Dental — general inbox', 'email' => 'hiring@bloomdental.com', 'country' => 'United States',
+            'contact_status' => 'generic_inbox', 'email_verification_status' => 'verified', 'source_name' => 'Hacker News: Who is hiring']);
+
+        app(\App\Services\LeadScoringService::class)->evaluateLead($lead->fresh());
+        $lead->refresh();
+        $rung = app(\App\Services\Outreach\WinLadderService::class)->evaluate($lead);
+
+        $this->assertGreaterThanOrEqual(\App\Models\OutreachSetting::current()->min_lead_score, $lead->overall_score, 'missing RFP / growth news is not counted against a hiring company');
+        $this->assertSame('A', $rung['tier'], json_encode($rung['blockers']));
+    }
+
     public function test_job_board_found_on_a_website_is_checked_by_the_hiring_source(): void
     {
         $this->assertSame('greenhouse:acme', GreenhouseLeverWatchlistAdapter::boardFromUrl('https://boards.greenhouse.io/acme/jobs/123'));

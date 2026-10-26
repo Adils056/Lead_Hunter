@@ -48,6 +48,12 @@ class LeadScoringService
         $localOnly = $icp && $icp->list('business_types') === ['local_business'];
         $missing = [];
         $evidence = [];
+        // Intent-led leads: a company that publicly asked for this work (RFP, "seeking freelancer") or is hiring for a
+        // role we fill has already said what it needs. The other buying routes (tender, hiring, growth news, website
+        // gaps) are then alternatives, not requirements: their absence is "not applicable", like for local businesses,
+        // instead of a zero that kept every such lead below the outreach minimum.
+        $intent = $signals->contains(fn ($s) => in_array($s->signal_type, ['procurement_rfp', 'project_requirements', 'vendor_request', 'erp_crm_request', 'voluntary_inquiry', 'developer_hiring'], true)
+            && (int) $s->confidence >= 80);
 
         // 1. Explicit request (RFP, tender, inbound enquiry)
         $rfp = $signals->whereIn('signal_type', ['procurement_rfp', 'project_requirements', 'vendor_request', 'erp_crm_request', 'voluntary_inquiry']);
@@ -55,7 +61,7 @@ class LeadScoringService
             $top = $rfp->sortByDesc('confidence')->first();
             $f['explicit_request'] = [$top->confidence / 100, "Explicit project request: \"{$top->title}\""];
             $evidence[] = $this->ev('explicit_request', $top);
-        } elseif ($localOnly) {
+        } elseif ($localOnly || $intent) {
             $f['explicit_request'] = [null, null];
         } else {
             $f['explicit_request'] = [0, null];
@@ -70,7 +76,7 @@ class LeadScoringService
             $evidence[] = $this->ev('software_need', $top);
         } elseif ($company && !empty($company->tech_stack)) {
             $f['software_need'] = [0.5, 'Known technology stack: ' . implode(', ', array_slice((array) $company->tech_stack, 0, 5))];
-        } elseif ($localOnly) {
+        } elseif ($localOnly || $intent) {
             $f['software_need'] = [null, null];
         } else {
             $f['software_need'] = [0, null];
@@ -79,7 +85,9 @@ class LeadScoringService
 
         // 3. Website gap (from real audit, or confirmed absence of a website)
         $noSite = $signals->first(fn ($s) => ($s->metadata['evidence_key'] ?? null) === 'no_website');
-        if ($company && $company->website_audited_at !== null && $company->website_opportunity_score !== null) {
+        if ($intent && !$noSite && ($company?->website_opportunity_score === null || $company->website_opportunity_score < 50)) {
+            $f['website_gap'] = [null, null]; // a sound website is no reason against a lead that asked for developers
+        } elseif ($company && $company->website_audited_at !== null && $company->website_opportunity_score !== null) {
             $f['website_gap'] = [$company->website_opportunity_score / 100, "Website audit opportunity {$company->website_opportunity_score}/100 (audited {$company->website_audited_at->toDateString()})"];
             if ($a = $signals->first(fn ($s) => ($s->metadata['source'] ?? null) === 'website_audit')) {
                 $evidence[] = $this->ev('website_gap', $a);
@@ -102,6 +110,8 @@ class LeadScoringService
             $f['growth_initiative'] = [0.6, "Established company size ({$company->size_range})"];
         } elseif ($company && ($company->google_review_count ?? 0) >= 50) {
             $f['growth_initiative'] = [0.5, "Active local business ({$company->google_review_count} Google reviews)"];
+        } elseif ($intent) {
+            $f['growth_initiative'] = [null, null];
         } elseif ($localOnly && $company?->google_review_count === null && empty($company?->size_range)
             && $signals->contains(fn ($s) => ($s->metadata['source'] ?? null) === 'website_audit' || ($s->metadata['evidence_key'] ?? null) === 'no_website')) {
             // Local SMBs from OSM/Overture carry no review count or size, and almost never announce funding: a 0 here

@@ -7,16 +7,24 @@ use App\Services\Discovery\ProspectIngestor;
 use Illuminate\Http\Client\ConnectionException;
 
 /**
- * Hacker News "Ask HN: Who is hiring?" (monthly, posted by the account "whoishiring") through the official Algolia
- * HN API (keyless): companies announcing developer roles, usually with a website and a contact address they publish
- * to be contacted. Only posts that match our services, sit in an approved country and do not refuse agencies are kept.
+ * Two monthly Hacker News threads (posted by the account "whoishiring"), read through the official keyless Algolia
+ * HN API. Both carry a website and an address the poster publishes to be contacted:
+ *   - "Ask HN: Who is hiring?"                  companies announcing developer roles  -> developer_hiring signal
+ *   - "Ask HN: Freelancer? Seeking freelancer?" only the SEEKING FREELANCER posts     -> vendor_request (asked for this work)
+ * Only posts that match our services, sit in an approved country and do not refuse agencies are kept.
  */
 class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
 {
     protected string $sourceSlug = 'hn_hiring';
     protected string $sourceName = 'Hacker News: Who is hiring';
     protected string $providerType = 'job_board';
-    protected string $description = 'Companies hiring developers in the monthly Hacker News "Who is hiring?" thread (official Algolia HN API).';
+    protected string $description = 'Companies hiring developers or seeking a freelancer in the monthly Hacker News threads (official Algolia HN API).';
+
+    /** title fragment => what a post in that thread means */
+    public const THREADS = [
+        'who is hiring' => ['signal' => 'developer_hiring', 'confidence' => 85, 'title' => 'Hiring developers', 'post' => null],
+        'seeking freelancer' => ['signal' => 'vendor_request', 'confidence' => 90, 'title' => 'Looking for a freelancer', 'post' => '/^\s*SEEKING\s+FREELANCER/i'],
+    ];
 
     public const API = 'https://hn.algolia.com/api/v1';
 
@@ -54,29 +62,38 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
 
     protected function fetchAndIngest(array $options, DiscoveryResult $result, ProspectIngestor $ingestor): void
     {
-        $stories = $this->resilientHttp(20)->get(self::API . '/search_by_date', ['tags' => 'story,author_whoishiring', 'hitsPerPage' => 10]);
-        $story = collect($stories->json('hits', []))->first(fn ($h) => stripos((string) ($h['title'] ?? ''), 'who is hiring') !== false);
-        if (!$story) {
-            $result->addError('No "Who is hiring?" thread found.');
-
-            return;
-        }
-        $thread = $this->resilientHttp(60)->get(self::API . '/items/' . $story['objectID']);
-        if (!$thread->successful()) {
-            $result->addError('HN thread HTTP ' . $thread->status());
-
-            return;
-        }
-
-        $allowed = array_values((array) ($options['countries'] ?? []));
+        $stories = collect($this->resilientHttp(20)->get(self::API . '/search_by_date', ['tags' => 'story,author_whoishiring', 'hitsPerPage' => 10])->json('hits', []));
         $limit = max(1, (int) ($options['limit'] ?? 25));
         $new = 0;
-        foreach ((array) $thread->json('children', []) as $post) {
+        foreach (self::THREADS as $match => $kind) {
+            $story = $stories->first(fn ($h) => stripos((string) ($h['title'] ?? ''), $match) !== false);
+            if (!$story) {
+                $result->addError("No \"{$match}\" thread found.");
+                continue;
+            }
+            $thread = $this->resilientHttp(60)->get(self::API . '/items/' . $story['objectID']);
+            if (!$thread->successful()) {
+                $result->addError('HN thread HTTP ' . $thread->status());
+                continue;
+            }
+            $new += $this->ingestThread((array) $thread->json('children', []), $story, $kind, $options, $limit - $new, $result, $ingestor);
+            if ($new >= $limit) {
+                break;
+            }
+        }
+    }
+
+    protected function ingestThread(array $posts, array $story, array $kind, array $options, int $limit, DiscoveryResult $result, ProspectIngestor $ingestor): int
+    {
+        $allowed = array_values((array) ($options['countries'] ?? []));
+        $new = 0;
+        foreach ($posts as $post) {
             if ($new >= $limit) {
                 break;
             }
             $html = (string) ($post['text'] ?? '');
-            if ($html === '' || !preg_match(self::RELEVANT, strip_tags($html))) {
+            $plain = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5);
+            if ($html === '' || ($kind['post'] && !preg_match($kind['post'], $plain)) || !preg_match(self::RELEVANT, $plain)) {
                 continue;
             }
             $result->totalFound++;
@@ -105,20 +122,22 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
             }
             $services = $this->inferServices($parsed['text']);
             $ingestor->addSignal($up['company'], [
-                'signal_type' => 'developer_hiring',
-                'title' => 'Hiring developers (Hacker News "' . ($story['title'] ?? 'Who is hiring?') . '")',
+                'signal_type' => $kind['signal'],
+                'title' => $kind['title'] . ' (Hacker News "' . ($story['title'] ?? 'Who is hiring?') . '")',
                 'source_url' => $postUrl,
                 'evidence_text' => mb_substr($parsed['text'], 0, 600),
-                'confidence' => 85,
+                'confidence' => $kind['confidence'],
                 'relevant_service' => $services[0],
                 'observed_date' => isset($post['created_at']) ? substr((string) $post['created_at'], 0, 10) : now()->toDateString(),
                 'expiry_date' => now()->addDays(45)->toDateString(),
-                'metadata' => ['source' => 'hn_who_is_hiring', 'hn_id' => $post['id'], 'location' => $parsed['location']],
+                'metadata' => ['source' => 'hn_' . str_replace(' ', '_', $kind['signal']), 'hn_id' => $post['id'], 'location' => $parsed['location']],
             ], $result);
             $ingestor->ensureLead($up['company'], array_filter(['email' => $parsed['email']]), $result, $services, $postUrl, "hn:{$post['id']}");
-            $result->recordItem(['company' => $parsed['company'], 'country' => $parsed['country'], 'post' => $postUrl, 'email' => $parsed['email']]);
+            $result->recordItem(['company' => $parsed['company'], 'country' => $parsed['country'], 'post' => $postUrl, 'email' => $parsed['email'], 'kind' => $kind['signal']]);
             $new++;
         }
+
+        return $new;
     }
 
     /**
@@ -154,6 +173,17 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
 
         $text = trim(preg_replace('/\s+/', ' ', strip_tags(str_ireplace(['<p>', '<br>'], ' ', $decoded))));
         $email = preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text, $em) ? strtolower($em[0]) : null;
+
+        $free = (array) config('leadpilot.free_mail_domains', []);
+        $mailHost = $email ? substr(strrchr($email, '@'), 1) : null;
+        if ($website === null && $mailHost && !in_array($mailHost, $free, true)) {
+            $website = 'https://' . $mailHost;
+        }
+        if ($company !== null && preg_match('/^seeking\b/i', $company)) {
+            // "SEEKING FREELANCER | Location | ..." names no company: use the poster's own site, never invent one
+            $host = $website ? preg_replace('/^www\./', '', (string) parse_url($website, PHP_URL_HOST)) : null;
+            $company = $host ? ucfirst(explode('.', $host)[0]) : null;
+        }
 
         $location = implode(' | ', array_slice($parts, 1));
         $country = null;
