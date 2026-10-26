@@ -189,6 +189,7 @@
         .metric-card .icon-box {
             width: 48px;
             height: 48px;
+            flex-shrink: 0;
             border-radius: 12px;
             display: flex;
             align-items: center;
@@ -288,11 +289,12 @@
 
         /* Page headers: when title and action buttons do not fit on one line, the buttons move below */
         .content-body .d-flex.justify-content-between { flex-wrap: wrap; gap: 0.75rem; }
+        .content-body .d-flex.justify-content-between:has(> .icon-box) { flex-wrap: nowrap; } /* KPI cards keep their icon on the right */
 
         /* Long e-mails, URLs and names inside flex rows wrap instead of widening the page */
         .content-body .d-flex > span, .content-body .d-flex > a:not(.btn), .content-body dd, .content-body .card-lp p {
             min-width: 0;
-            overflow-wrap: anywhere;
+            overflow-wrap: break-word; /* breaks only a word wider than its box, never "Qualifi|ed" */
         }
         .content-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
         .content-body .font-monospace, .content-body code { overflow-wrap: anywhere; }
@@ -324,6 +326,8 @@
             .content-body .btn-group,
             .content-body .d-flex:has(> .badge, > .btn, > form) { flex-wrap: wrap; gap: 0.5rem; }
             .content-body .btn-group > .btn { flex: 0 0 auto; }
+            /* wide tables keep readable columns and scroll sideways instead of squeezing into one word per line */
+            .content-body .table-responsive > table:has(th:nth-child(4)) { min-width: 720px; }
         }
     </style>
 </head>
