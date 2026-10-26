@@ -95,7 +95,17 @@ class AutopilotRunner
                         ->limit((int) $cfg['audits_per_cycle'])->get();
                     foreach ($companies as $c) {
                         if (!$dryRun) {
-                            app(WebsiteAuditService::class)->audit($c);
+                            try {
+                                app(WebsiteAuditService::class)->audit($c);
+                            } catch (\Throwable $e) {
+                                // One bad site must not stop the other audits or the e-mail checks below. Record the
+                                // attempt so the same company is not retried (and failing) every cycle.
+                                Log::warning("Website audit failed for company {$c->id}: " . mb_substr($e->getMessage(), 0, 300));
+                                \App\Models\WebsiteAudit::create(['company_id' => $c->id, 'url' => mb_substr((string) $c->website, 0, 500), 'status' => 'failed',
+                                    'summary' => 'Audit failed: ' . mb_substr($e->getMessage(), 0, 200), 'audited_at' => now()]);
+                                $res['audit_errors'] = ($res['audit_errors'] ?? 0) + 1;
+                                continue;
+                            }
                         }
                         $res['audited']++;
                     }
@@ -115,7 +125,12 @@ class AutopilotRunner
                         ->limit(10)->get();
                     foreach ($leads as $l) {
                         if (!$dryRun) {
-                            app(EmailVerificationService::class)->verifyEmail($l->email, $l);
+                            try {
+                                app(EmailVerificationService::class)->verifyEmail($l->email, $l);
+                            } catch (\Throwable $e) {
+                                Log::warning("E-mail check failed for lead {$l->id}: " . mb_substr($e->getMessage(), 0, 300));
+                                continue;
+                            }
                             $res['verified']++;
                         }
                     }

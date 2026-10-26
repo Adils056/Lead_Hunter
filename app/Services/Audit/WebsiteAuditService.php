@@ -90,6 +90,14 @@ class WebsiteAuditService
         $finalUrl = $this->lastFinalUrl ?? $url;
         $html = $res->body();
         $bytes = strlen($html);
+
+        // A bot-protection challenge (captcha / "checking your browser") is not the business's website: auditing it
+        // would report gaps the real site may not have. Record that the site could not be audited, claim nothing.
+        if ($wall = $this->botWall($html, $finalUrl)) {
+            return $this->store($company, $url, $finalUrl, 'bot_protected', $res->status(), $ms, $bytes, [
+                $this->check('reachable', 'Website reachable', 'info', $res->status(), "The site answered with a bot-protection page ({$wall}); the real homepage could not be audited."),
+            ], [], $contacts, null);
+        }
         $checks[] = $this->check('reachable', 'Website reachable', 'pass', $res->status(), "Homepage returned HTTP {$res->status()}.");
 
         // ---- 2. Transport
@@ -168,6 +176,31 @@ class WebsiteAuditService
         $this->syncSignal($company, $audit);
 
         return $audit;
+    }
+
+    public const BOT_WALL_PATTERNS = [
+        'captcha', 'just a moment', 'attention required', 'checking your browser', 'are you a robot', 'are you human',
+        'access denied', 'ddos-guard', 'bot manager', 'please verify you are a human', 'request unsuccessful',
+    ];
+
+    /** Name of the bot-protection wall the response is, or null for a normal page. */
+    public function botWall(string $html, string $finalUrl): ?string
+    {
+        $title = preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $m) ? mb_strtolower(trim(html_entity_decode(strip_tags($m[1])))) : '';
+        foreach (self::BOT_WALL_PATTERNS as $p) {
+            if ($title !== '' && str_contains($title, $p)) {
+                return "page title \"" . mb_substr($title, 0, 60) . "\"";
+            }
+        }
+        $u = mb_strtolower($finalUrl);
+        if (str_contains($u, 'botmanager') || str_contains($u, 'captcha') || str_contains($u, '/cdn-cgi/challenge')) {
+            return 'redirected to a challenge URL';
+        }
+        if (str_contains($html, '_Incapsula_Resource') || str_contains($html, 'cf-chl-') || str_contains($html, 'challenge-platform')) {
+            return 'challenge script';
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------------------ checks
@@ -513,8 +546,8 @@ class WebsiteAuditService
 
         return WebsiteAudit::create([
             'company_id' => $company->id,
-            'url' => $url,
-            'final_url' => $finalUrl,
+            'url' => mb_substr($url, 0, 500), // redirect targets can carry kilobytes of tracking query string
+            'final_url' => $finalUrl === null ? null : mb_substr($finalUrl, 0, 500),
             'status' => $status,
             'http_status' => $http,
             'response_time_ms' => $ms,
@@ -581,6 +614,9 @@ class WebsiteAuditService
     {
         if ($status === 'blocked_by_robots') {
             return "Audit not performed: {$url} disallows crawling in robots.txt.";
+        }
+        if ($status === 'bot_protected') {
+            return 'Audit not performed: ' . Company::normalizeDomain($url) . ' answered with a bot-protection page, so no website gaps are claimed.';
         }
         if ($status === 'unreachable') {
             return "{$url} could not be loaded during the audit (" . ($checks[0]['evidence'] ?? '') . ') Recommend confirming before outreach — it may be a temporary outage.';

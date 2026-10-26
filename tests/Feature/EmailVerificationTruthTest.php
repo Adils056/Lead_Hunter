@@ -244,6 +244,46 @@ class EmailVerificationTruthTest extends TestCase
         $this->assertSame(EmailStatus::VERIFIED, $inbox->fresh()->email_verification_status);
     }
 
+    public function test_one_failing_website_audit_does_not_stop_other_audits_or_email_checks(): void
+    {
+        $broken = $this->lead(EmailStatus::VERIFIED)->company;
+        $other = $this->lead(EmailStatus::VERIFIED)->company;
+        \App\Models\WebsiteAudit::query()->delete();
+        $inbox = $this->lead(EmailStatus::UNVERIFIED);
+        \App\Models\WebsiteAudit::where('company_id', $inbox->company_id)->update(['created_at' => now()]);
+        $this->app->instance(EmailVerificationService::class, $this->verifier(['result' => 'deliverable', 'code' => 250]));
+        $this->app->instance(\App\Services\Audit\WebsiteAuditService::class, new class($broken->id) extends \App\Services\Audit\WebsiteAuditService {
+            public function __construct(public int $brokenId) {}
+
+            public function audit(\App\Models\Company $company): \App\Models\WebsiteAudit
+            {
+                if ($company->id === $this->brokenId) {
+                    throw new \RuntimeException('Data too long for column final_url');
+                }
+
+                return \App\Models\WebsiteAudit::create(['company_id' => $company->id, 'url' => $company->website, 'status' => 'completed', 'audited_at' => now()]);
+            }
+        });
+        Http::fake();
+
+        $out = app(\App\Services\Autopilot\AutopilotRunner::class)->run();
+
+        $this->assertTrue($out['steps']['enrichment']['ok'], json_encode($out['steps']['enrichment']));
+        $this->assertSame(1, $out['steps']['enrichment']['result']['audit_errors']);
+        $this->assertDatabaseHas('website_audits', ['company_id' => $broken->id, 'status' => 'failed']);
+        $this->assertDatabaseHas('website_audits', ['company_id' => $other->id, 'status' => 'completed']);
+        $this->assertSame(EmailStatus::VERIFIED, $inbox->fresh()->email_verification_status, 'e-mail checks still run');
+    }
+
+    public function test_bot_protection_pages_are_recognised_and_never_audited_as_the_website(): void
+    {
+        $svc = app(\App\Services\Audit\WebsiteAuditService::class);
+        $this->assertNotNull($svc->botWall('<html><title>Radware Captcha Page</title></html>', 'https://x.org/'));
+        $this->assertNotNull($svc->botWall('<html><title>Just a moment...</title></html>', 'https://x.org/'));
+        $this->assertNotNull($svc->botWall('<html><title>Home</title></html>', 'https://x.org/a?ssk=botmanager_support@radware.com'));
+        $this->assertNull($svc->botWall('<html><title>Smile Dental Clinic | Lahore</title></html>', 'https://smile.pk/'));
+    }
+
     public function test_dashboard_counts_only_proven_mailboxes_as_verified(): void
     {
         $this->lead(EmailStatus::VERIFIED);
