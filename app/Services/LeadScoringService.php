@@ -102,6 +102,11 @@ class LeadScoringService
             $f['growth_initiative'] = [0.6, "Established company size ({$company->size_range})"];
         } elseif ($company && ($company->google_review_count ?? 0) >= 50) {
             $f['growth_initiative'] = [0.5, "Active local business ({$company->google_review_count} Google reviews)"];
+        } elseif ($localOnly && $company?->google_review_count === null && empty($company?->size_range) && ($f['website_gap'][0] ?? null) !== null) {
+            // Local SMBs from OSM/Overture carry no review count or size, and almost never announce funding: a 0 here
+            // is missing data, not evidence, and capped every audited local business below "qualified". Treated as
+            // not applicable like RFPs/hiring above, but only once the website audit gives real evidence to score on.
+            $f['growth_initiative'] = [null, null];
         } else {
             $f['growth_initiative'] = [0, null];
             $missing[] = 'No growth, funding or expansion evidence.';
