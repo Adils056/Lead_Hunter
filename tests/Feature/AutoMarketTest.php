@@ -182,6 +182,34 @@ class AutoMarketTest extends TestCase
         $this->assertSame([$ready->id], $audited);
     }
 
+    public function test_a_website_that_is_not_the_emails_business_blocks_outreach(): void
+    {
+        $mk = fn (string $site, string $email) => \App\Models\Lead::create(['company_id' => \App\Models\Company::create(['name' => 'Bold ' . uniqid(), 'website' => $site, 'country' => 'United Kingdom'])->id,
+            'first_name' => 'Info', 'email' => $email, 'email_verification_status' => 'verified', 'country' => 'United Kingdom', 'overall_score' => 80]);
+
+        $this->assertNotNull(\App\Services\EligibilityGateService::websiteMismatch($mk('https://www.thehouselondon.co.uk/', 'foodandbar@boldcafe.co.uk')));
+        $this->assertNull(\App\Services\EligibilityGateService::websiteMismatch($mk('https://www.premierinn.com/', 'res@mena.premierinn.com')), 'subdomain of the same site');
+        $this->assertNull(\App\Services\EligibilityGateService::websiteMismatch($mk('https://smile.pk', 'smiledental@gmail.com')), 'free mail proves nothing either way');
+        $this->assertArrayHasKey('website_match', app(\App\Services\EligibilityGateService::class)->evaluate($mk('https://other.co.uk', 'info@bold.co.uk'))->failedChecks);
+    }
+
+    public function test_one_failed_page_load_is_not_evidence(): void
+    {
+        config(['leadpilot.sources.website_crawler.dns_overrides' => ['down-cafe.example' => ['93.184.216.34']]]); // let the SSRF guard pass a fake host
+        $c = \App\Models\Company::create(['name' => 'Down Cafe', 'website' => 'https://down-cafe.example', 'country' => 'United Kingdom']);
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response('', 404)]);
+        $svc = app(\App\Services\Audit\WebsiteAuditService::class);
+
+        $first = $svc->audit($c);
+        $this->assertSame('unreachable', $first->status);
+        $this->assertSame([0, 0], [$first->opportunity_score, \App\Models\BuyingSignal::where('company_id', $c->id)->count()], 'first failure: no claim');
+
+        $this->travel(2)->hours();
+        $second = $svc->audit($c);
+        $this->assertSame(40, $second->opportunity_score, 'confirmed an hour later: modest evidence');
+        $this->assertSame(1, \App\Models\BuyingSignal::where('company_id', $c->id)->count());
+    }
+
     public function test_first_touch_cap_warms_up_after_going_live(): void
     {
         config(['leadpilot.autopilot.max_first_touch_per_day' => 25, 'leadpilot.autopilot.ramp' => ['days' => 3, 'cap' => 10]]);

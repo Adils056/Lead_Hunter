@@ -81,8 +81,17 @@ class WebsiteAuditService
 
         if (!$res || $res->status() >= 400) {
             $checks[] = $this->check('reachable', 'Website reachable', 'fail', $res?->status(), $res ? "Homepage returned HTTP {$res->status()}." : 'Request failed: ' . mb_substr($err ?? 'unknown', 0, 200), ['website_unreachable']);
+            // One failed load proves nothing (outage, geo-block, or a directory listing pointing at someone else's
+            // site). It becomes evidence only when an earlier audit, at least an hour before, also failed, and even
+            // then it is a modest 40: a dead site can also mean a closed business.
+            $confirmed = WebsiteAudit::where('company_id', $company->id)->where('status', 'unreachable')->where('created_at', '<=', now()->subHour())->exists();
             $audit = $this->store($company, $url, null, 'unreachable', $res?->status(), $ms, null, $checks, [], $contacts, null);
-            $this->syncSignal($company, $audit);
+            $audit->update(['opportunity_score' => $confirmed ? 40 : 0]);
+            if ($confirmed) {
+                $this->syncSignal($company, $audit);
+            } else {
+                BuyingSignal::where('company_id', $company->id)->where('signal_type', 'website_issues')->where('metadata->source', 'website_audit')->delete();
+            }
 
             return $audit;
         }
@@ -681,7 +690,7 @@ class WebsiteAuditService
         BuyingSignal::where('company_id', $company->id)->where('signal_type', 'website_issues')
             ->where('metadata->source', 'website_audit')->delete();
 
-        if ($audit->status !== 'unreachable' && ($audit->opportunity_score < 25 || !$audit->opportunities)) {
+        if ($audit->status !== 'unreachable' && ($audit->opportunity_score < 25 || !$audit->opportunities)) { // unreachable arrives here only once confirmed
             return;
         }
         $top = $audit->opportunities[0] ?? null;
