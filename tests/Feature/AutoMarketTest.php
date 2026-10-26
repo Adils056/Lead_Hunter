@@ -153,6 +153,35 @@ class AutoMarketTest extends TestCase
         $this->assertArrayHasKey('public_sector', app(\App\Services\EligibilityGateService::class)->evaluate($lead)->failedChecks);
     }
 
+    public function test_companies_with_a_confirmed_inbox_are_audited_first(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        config(['leadpilot.autopilot.audits_per_cycle' => 1]);
+        $mk = function (string $name, string $status) {
+            $c = \App\Models\Company::create(['name' => $name, 'website' => 'https://' . strtolower(str_replace(' ', '', $name)) . '.example', 'country' => 'Pakistan']);
+            \App\Models\Lead::create(['company_id' => $c->id, 'first_name' => 'Info', 'email' => 'info@x' . uniqid() . '.example', 'email_verification_status' => $status, 'country' => 'Pakistan']);
+
+            return $c;
+        };
+        $mk('No Email Yet', 'unverified');
+        $ready = $mk('Confirmed Inbox', 'verified');
+        $audited = [];
+        $this->app->instance(\App\Services\Audit\WebsiteAuditService::class, new class($audited) extends \App\Services\Audit\WebsiteAuditService {
+            public function __construct(public array &$seen) {}
+
+            public function audit(\App\Models\Company $company): \App\Models\WebsiteAudit
+            {
+                $this->seen[] = $company->id;
+
+                return \App\Models\WebsiteAudit::create(['company_id' => $company->id, 'url' => $company->website, 'status' => 'completed', 'audited_at' => now()]);
+            }
+        });
+
+        app(\App\Services\Autopilot\AutopilotRunner::class)->run();
+
+        $this->assertSame([$ready->id], $audited);
+    }
+
     public function test_first_touch_cap_warms_up_after_going_live(): void
     {
         config(['leadpilot.autopilot.max_first_touch_per_day' => 25, 'leadpilot.autopilot.ramp' => ['days' => 3, 'cap' => 10]]);

@@ -346,7 +346,8 @@ return [
             'clinics' => ['label' => 'Clinics & healthcare', 'niches' => ['dentist', 'clinic', 'physio', 'skin'], 'services' => ['web_redesign', 'seo_technical'], 'type' => 'local_business'],
             'beauty' => ['label' => 'Salons, beauty & gyms', 'niches' => ['salon', 'beauty', 'gym'], 'services' => ['web_redesign', 'conversion_optimization'], 'type' => 'local_business'],
             'food' => ['label' => 'Restaurants & cafes', 'niches' => ['restaurant', 'cafe', 'bakery'], 'services' => ['web_dev', 'ecommerce'], 'type' => 'local_business'],
-            'hospitality' => ['label' => 'Hotels & travel', 'niches' => ['hotel', 'travel'], 'services' => ['web_redesign', 'conversion_optimization'], 'type' => 'local_business'],
+            // 'hospitality' (hotels & travel) removed 26 Oct 2026: on live data it yielded chain branches and
+            // reservations@ inboxes, not owners who buy a website. Its profiles are switched off on the next sync.
             'property' => ['label' => 'Real estate & construction', 'niches' => ['real estate', 'property', 'construction'], 'services' => ['web_redesign', 'custom_software'], 'type' => 'local_business'],
             'professional' => ['label' => 'Law, accounting & architects', 'niches' => ['lawyer', 'accountant', 'architect', 'insurance'], 'services' => ['web_redesign', 'seo_technical'], 'type' => 'local_business'],
             'education' => ['label' => 'Schools & academies', 'niches' => ['school', 'college', 'academy'], 'services' => ['web_dev', 'custom_software'], 'type' => 'local_business'],

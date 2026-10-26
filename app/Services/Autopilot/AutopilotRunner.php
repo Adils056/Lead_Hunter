@@ -98,9 +98,15 @@ class AutopilotRunner
                 $res = ['audited' => 0, 'verified' => 0];
                 if ($policy->isAutomatic('enrichment.audit')) {
                     // any audit ATTEMPT in the last 7 days counts (failed/unreachable sites are not retried every cycle)
-                    $companies = Company::whereNotNull('website')->whereHas('leads')
-                        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
-                        ->limit((int) $cfg['audits_per_cycle'])->get();
+                    $due = fn () => Company::whereNotNull('website')->whereHas('leads')
+                        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('created_at', '>=', now()->subDays(7)));
+                    $n = (int) $cfg['audits_per_cycle'];
+                    // Companies whose inbox is already confirmed go first: an audit is all that stands between them and
+                    // rung A. The rest follow (their audit is also how a contact e-mail gets found on the website).
+                    $companies = $due()->whereHas('leads', fn ($q) => $q->whereIn('email_verification_status', EmailStatus::sendableStatuses()))->limit($n)->get();
+                    if ($companies->count() < $n) {
+                        $companies = $companies->concat($due()->whereNotIn('id', $companies->pluck('id'))->limit($n - $companies->count())->get());
+                    }
                     $deadline = microtime(true) + (int) ($cfg['audit_seconds'] ?? 150);
                     foreach ($companies as $c) {
                         if (microtime(true) > $deadline) {
