@@ -63,6 +63,7 @@ class WinLadderService
         'emergency_stop' => 'Emergency stop is active — clear it in Settings → Outreach Engine',
         'follow_up_delay' => 'Follow-up spacing not met yet',
         'legitimate_source' => 'Record where this contact came from (source) before emailing',
+        'website_match' => 'Website and e-mail are on different domains — confirm the business\'s real website (edit the company) before any claim about it',
     ];
 
     public function __construct(

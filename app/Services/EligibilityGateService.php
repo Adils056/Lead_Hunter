@@ -14,6 +14,24 @@ use Carbon\Carbon;
 class EligibilityGateService
 {
     /**
+     * The website we audited must be this business's site: a directory listing sometimes carries another business's URL,
+     * and the e-mail would then claim gaps on a site the prospect does not own. Free-mail addresses prove nothing either way.
+     */
+    public static function websiteMismatch(Lead $lead): ?string
+    {
+        $email = strtolower(trim((string) $lead->email));
+        $mailHost = str_contains($email, '@') ? substr(strrchr($email, '@'), 1) : '';
+        $siteHost = \App\Models\Company::normalizeDomain($lead->company?->website) ?: strtolower((string) $lead->company?->domain);
+        if ($mailHost === '' || $siteHost === '' || in_array($mailHost, (array) config('leadpilot.free_mail_domains', []), true)) {
+            return null;
+        }
+        $siteHost = preg_replace('/^www\./', '', $siteHost);
+        $same = $mailHost === $siteHost || str_ends_with($mailHost, '.' . $siteHost) || str_ends_with($siteHost, '.' . $mailHost);
+
+        return $same ? null : "Website ({$siteHost}) and e-mail ({$mailHost}) are on different domains: confirm which site belongs to this business before claiming anything about it.";
+    }
+
+    /**
      * Run all 10 mandatory eligibility checks before any outreach email is queued or sent.
      *
      * @param bool $isAutomatedBackgroundDispatch When true, strictly enforces dry_run / mode restrictions.
@@ -93,6 +111,11 @@ class EligibilityGateService
         // 5b. Contact identity (v3): no automated outreach to unknown / shared / tender contacts.
         // v4.2: a local business's own published inbox may be used when the owner switched "allow shared inbox" on;
         // published tender contacts are never cold-emailed.
+        $isPilotRecipient = $settings->isControlledPilot()
+            && strtolower(trim((string) $lead->email)) === strtolower(trim((string) $settings->controlled_pilot_recipient));
+        if (!$isPilotRecipient && ($why = self::websiteMismatch($lead))) { // the owner's own pilot address never matches a prospect site
+            $result->fail('website_match', $why, 'ready_for_review');
+        }
         if (\App\Support\PublicSector::matches($lead->email, $lead->company?->website, $lead->company?->domain)) {
             $result->fail('public_sector', 'Public-sector body (government, state school, university or health service): they buy through procurement, not cold e-mail.', 'not_a_fit');
         }
