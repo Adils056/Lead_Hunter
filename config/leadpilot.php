@@ -315,6 +315,11 @@ return [
     'autopilot' => [
         'discovery_runs_per_cycle' => 2,
         'audits_per_cycle' => 10,
+        // Time budgets (seconds) so one cycle stays well under shared-hosting process limits; whatever is left
+        // over is picked up 15 minutes later. lock_seconds frees the cycle lock if the host killed a run.
+        'audit_seconds' => (int) env('LEADPILOT_AUDIT_SECONDS', 150),
+        'verify_seconds' => (int) env('LEADPILOT_VERIFY_SECONDS', 90),
+        'lock_seconds' => (int) env('LEADPILOT_CYCLE_LOCK_SECONDS', 900),
         'drafts_per_cycle' => 10,
         'max_first_touch_per_day' => (int) env('LEADPILOT_MAX_FIRST_TOUCH_PER_DAY', 25),
         // Warm-up: for the first `days` after outreach went live, first touches are capped at `cap` per day.

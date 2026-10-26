@@ -85,6 +85,28 @@ class AutoMarketTest extends TestCase
         $this->artisan('leadpilot:status')->expectsOutputToContain('No failures')->assertExitCode(0);
     }
 
+    public function test_a_lock_left_by_a_killed_cycle_is_reported_and_can_be_cleared(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        \Illuminate\Support\Facades\Cache::lock(\App\Services\Autopilot\AutopilotRunner::LOCK, 900)->get(); // a run the host killed
+        $this->assertArrayHasKey('skipped', app(\App\Services\Autopilot\AutopilotRunner::class)->run());
+
+        $this->artisan('leadpilot:autopilot --unlock')->expectsOutputToContain('Cycle lock cleared')->expectsOutputToContain('"enrichment"')->assertExitCode(0);
+    }
+
+    public function test_audits_stop_at_the_time_budget(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        config(['leadpilot.autopilot.audit_seconds' => -1]);
+        $c = \App\Models\Company::create(['name' => 'Slow Site', 'website' => 'https://slow.example', 'domain' => 'slow.example', 'country' => 'Pakistan']);
+        \App\Models\Lead::create(['company_id' => $c->id, 'first_name' => 'A', 'email' => 'a@slow.example', 'country' => 'Pakistan']);
+
+        $out = app(\App\Services\Autopilot\AutopilotRunner::class)->run();
+
+        $this->assertTrue($out['steps']['enrichment']['result']['audit_time_budget_reached']);
+        $this->assertSame(0, $out['steps']['enrichment']['result']['audited']);
+    }
+
     public function test_first_touch_cap_warms_up_after_going_live(): void
     {
         config(['leadpilot.autopilot.max_first_touch_per_day' => 25, 'leadpilot.autopilot.ramp' => ['days' => 3, 'cap' => 10]]);

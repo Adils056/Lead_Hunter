@@ -386,7 +386,13 @@ Artisan::command('leadpilot:status', function (\App\Services\Outreach\SequenceEn
         $hb = $beat($c);
         $fresh = $hb && $hb->beat_at->gt(now()->subMinutes($max));
         $stepsOk = $c !== 'autopilot' || ($hb->meta['ok'] ?? false);
-        $add($fresh && $stepsOk ? 'PASS' : 'FAIL', $label, 'last run ' . $ago($hb?->beat_at) . ($c === 'autopilot' && $hb && !$stepsOk ? ' — a step failed: php artisan leadpilot:autopilot' : ''));
+        $detail = 'last run ' . $ago($hb?->beat_at) . ($c === 'autopilot' && $hb && !$stepsOk ? ' — a step failed: php artisan leadpilot:autopilot' : '');
+        $started = $c === 'autopilot' ? $beat('autopilot_started') : null;
+        if ($started && (!$hb || $started->beat_at->gt($hb->beat_at))) {
+            $detail .= ' · a cycle started ' . $ago($started->beat_at) . ' has not finished'
+                . ($started->beat_at->lt(now()->subMinutes(20)) ? ' (killed by the host?) — php artisan leadpilot:autopilot --unlock' : '');
+        }
+        $add($fresh && $stepsOk ? 'PASS' : 'FAIL', $label, $detail);
     }
 
     $new24 = \App\Models\Lead::where('created_at', '>=', now()->subDay())->count();
@@ -463,7 +469,11 @@ Artisan::command('leadpilot:reverify-emails {--status=mx_only : Comma-separated 
 | v4 Autopilot commands
 |--------------------------------------------------------------------------
 */
-Artisan::command('leadpilot:autopilot {--dry-run : Plan only; no searches, sends or writes}', function (\App\Services\Autopilot\AutopilotRunner $runner) {
+Artisan::command('leadpilot:autopilot {--dry-run : Plan only; no searches, sends or writes} {--unlock : Clear a cycle lock left behind by a killed run, then run}', function (\App\Services\Autopilot\AutopilotRunner $runner) {
+    if ($this->option('unlock')) {
+        \Illuminate\Support\Facades\Cache::lock(\App\Services\Autopilot\AutopilotRunner::LOCK)->forceRelease();
+        $this->warn('Cycle lock cleared.');
+    }
     $res = $runner->run((bool) $this->option('dry-run'));
     $this->line(json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 })->purpose('Run one autopilot cycle (discover, enrich, score, outreach, follow-ups, replies, monitoring)');
