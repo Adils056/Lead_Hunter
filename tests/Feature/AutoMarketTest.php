@@ -115,6 +115,11 @@ class AutoMarketTest extends TestCase
             $c = \App\Models\Company::create(['name' => 'Smile Dental ' . uniqid(), 'website' => 'https://smile' . uniqid() . '.pk', 'country' => 'Pakistan', 'city' => 'Lahore',
                 'industry' => 'Dentist', 'public_phone' => '+92 42 1234567', 'source_provider' => 'osm_overpass',
                 'website_opportunity_score' => $opportunity, 'website_audited_at' => $opportunity === null ? null : now()]);
+            if ($opportunity !== null && $opportunity >= 25) { // what WebsiteAuditService::syncSignal records for a real gap
+                \App\Models\BuyingSignal::create(['company_id' => $c->id, 'signal_type' => 'website_issues', 'title' => "Website audit: opportunity {$opportunity}/100",
+                    'evidence_text' => 'No viewport meta tag.', 'relevant_service' => 'web_redesign', 'confidence' => 80, 'observed_date' => now()->toDateString(),
+                    'verification_status' => 'verified', 'metadata' => ['source' => 'website_audit']]);
+            }
             $l = \App\Models\Lead::create(['company_id' => $c->id, 'icp_profile_id' => $icp->id, 'first_name' => 'Info', 'email' => 'info@' . parse_url($c->website, PHP_URL_HOST),
                 'email_verification_status' => 'verified', 'contact_status' => 'generic_inbox', 'country' => 'Pakistan', 'source_name' => 'OpenStreetMap (Overpass)']);
 
@@ -123,11 +128,29 @@ class AutoMarketTest extends TestCase
 
         $weakSite = $make(60);
         $goodSite = $make(15);
+        $minorGaps = $make(20);
         $notAudited = $make(null);
 
         $this->assertGreaterThanOrEqual(\App\Support\ScoreBands::qualified(), $weakSite, 'audited weak website + verified inbox qualifies');
         $this->assertLessThan(\App\Support\ScoreBands::qualified(), $goodSite, 'a good website is still not a winning lead');
+        $this->assertLessThan(\App\Support\ScoreBands::qualified(), $minorGaps, 'gaps too small to record a website-issues signal give no lift');
         $this->assertLessThan(\App\Support\ScoreBands::qualified(), $notAudited, 'no evidence, no lift');
+    }
+
+    public function test_public_sector_bodies_are_never_cold_emailed(): void
+    {
+        foreach (['bidwill-p.school@det.nsw.edu.au', 'info@council.gov.uk', 'a@moh.gov.ae', 'x@trust.nhs.uk', 'office@school.sch.uk', 'dean@uni.ac.uk', 'https://www.punjab.gov.pk', 'info@nyc.gov'] as $v) {
+            $this->assertTrue(\App\Support\PublicSector::matches($v), $v);
+        }
+        foreach (['info@smiledental.pk', 'hello@govtech-solutions.com', 'info@education-first.co.uk', 'https://edutech.ae'] as $v) {
+            $this->assertFalse(\App\Support\PublicSector::matches($v), $v);
+        }
+
+        $c = \App\Models\Company::create(['name' => 'Bidwill Public School', 'website' => 'https://bidwill-p.schools.nsw.gov.au', 'country' => 'Australia']);
+        $lead = \App\Models\Lead::create(['company_id' => $c->id, 'first_name' => 'Info', 'email' => 'bidwill-p.school@det.nsw.edu.au', 'email_verification_status' => 'verified',
+            'contact_status' => 'generic_inbox', 'country' => 'Australia', 'overall_score' => 80]);
+        $this->assertSame('D', app(\App\Services\Outreach\WinLadderService::class)->evaluate($lead)['tier']);
+        $this->assertArrayHasKey('public_sector', app(\App\Services\EligibilityGateService::class)->evaluate($lead)->failedChecks);
     }
 
     public function test_first_touch_cap_warms_up_after_going_live(): void
