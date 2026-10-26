@@ -186,6 +186,9 @@ class WinLadderService
         if ($declined) {
             return $this->rung('D', $points, $reasons, ['Prospect declined'], 'Do not email for at least 6 months; then only with a new trigger.');
         }
+        if (\App\Support\PublicSector::matches($email, $company?->website, $company?->domain)) {
+            return $this->rung('D', $points, $reasons, ['Public-sector body (government, state school, university or health service)'], 'Buys through procurement: answer its tenders, do not cold-email.');
+        }
         if ($lead->email_verification_status === EmailStatus::INVALID) {
             return $this->rung('D', $points, $reasons, ['Email address is invalid / non-deliverable'], 'Find another address (website, LinkedIn, phone call) before any contact.');
         }

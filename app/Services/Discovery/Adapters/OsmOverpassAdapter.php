@@ -300,6 +300,12 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
                     continue;
                 }
                 $result->totalFound++;
+                // Branches of chains (brand / brand:wikidata tags: Premier Inn, McDonald's, ...) are run from head
+                // office; a local agency pitch to the branch inbox never reaches a buyer.
+                if (!empty($t['brand']) || !empty($t['brand:wikidata'])) {
+                    $result->excludedCount++;
+                    continue;
+                }
                 $website = $t['website'] ?? $t['contact:website'] ?? $t['url'] ?? null;
                 if ($website && !preg_match('#^https?://#i', $website)) {
                     $website = 'https://' . ltrim($website, '/');

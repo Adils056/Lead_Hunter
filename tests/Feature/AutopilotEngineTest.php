@@ -301,6 +301,7 @@ class AutopilotEngineTest extends TestCase
                 ['type' => 'node', 'id' => 11, 'tags' => ['name' => 'Smile Dental', 'amenity' => 'dentist', 'website' => 'smile.test', 'phone' => '+92 42 111;+92 42 222', 'addr:street' => 'Mall Rd', 'addr:city' => 'Lahore']],
                 ['type' => 'way', 'id' => 22, 'tags' => ['name' => 'Glow Clinic', 'healthcare' => 'clinic', 'contact:email' => 'hello@glow.test']],
                 ['type' => 'node', 'id' => 33, 'tags' => ['amenity' => 'dentist']], // nameless: skipped
+                ['type' => 'node', 'id' => 44, 'tags' => ['name' => 'Premier Inn Lahore', 'tourism' => 'hotel', 'brand' => 'Premier Inn', 'brand:wikidata' => 'Q2108626', 'email' => 'res@premierinn.test']], // chain branch: skipped
             ]], 200),
             '*' => Http::response('', 404),
         ]);
@@ -310,6 +311,7 @@ class AutopilotEngineTest extends TestCase
 
         $r = $osm->discover(['places' => ['Lahore, Pakistan'], 'niches' => ['dentist'], 'country' => 'Pakistan', 'limit' => 10]);
         $this->assertSame(2, $r->newCompaniesCount, json_encode($r->errors));
+        $this->assertNull(Company::where('name', 'Premier Inn Lahore')->first(), 'chain branches are not local prospects');
         $smile = Company::where('external_id', 'osm:node/11')->firstOrFail();
         $this->assertSame('https://smile.test', $smile->website);
         $this->assertSame('+92 42 111', $smile->public_phone);

@@ -93,6 +93,9 @@ class EligibilityGateService
         // 5b. Contact identity (v3): no automated outreach to unknown / shared / tender contacts.
         // v4.2: a local business's own published inbox may be used when the owner switched "allow shared inbox" on;
         // published tender contacts are never cold-emailed.
+        if (\App\Support\PublicSector::matches($lead->email, $lead->company?->website, $lead->company?->domain)) {
+            $result->fail('public_sector', 'Public-sector body (government, state school, university or health service): they buy through procurement, not cold e-mail.', 'not_a_fit');
+        }
         $isTenderContact = ($lead->job_title === 'Tender contact (published)')
             || in_array($lead->company?->source_provider, ['uk_contracts_finder', 'uk_find_a_tender', 'eu_ted'], true);
         if ($lead->contact_status === 'generic_inbox' && $settings->allow_shared_inbox && !$isTenderContact) {
