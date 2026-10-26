@@ -4,6 +4,7 @@ namespace App\Services\Autopilot;
 
 use App\Models\Company;
 use App\Models\Lead;
+use App\Models\SystemHeartbeat;
 use App\Services\Audit\WebsiteAuditService;
 use App\Services\EmailVerificationService;
 use App\Services\Hunting\AutoMarketService;
@@ -22,12 +23,19 @@ use Illuminate\Support\Facades\Log;
  */
 class AutopilotRunner
 {
+    public const LOCK = 'leadpilot:autopilot';
+
     public function run(bool $dryRun = false): array
     {
-        $lock = Cache::lock('leadpilot:autopilot', 1800);
+        // Shared hosts kill long processes without running `finally`; a short lock TTL plus the per-step time
+        // budgets below keep a killed cycle from blocking the next ones for long.
+        $lock = Cache::lock(self::LOCK, (int) config('leadpilot.autopilot.lock_seconds', 900));
         if (!$lock->get()) {
-            return ['skipped' => 'another autopilot cycle is still running'];
+            $started = SystemHeartbeat::where('component', 'autopilot_started')->value('beat_at');
+
+            return ['skipped' => 'another autopilot cycle is still running' . ($started ? ' (started ' . $started->diffForHumans() . ')' : '')];
         }
+        app(HealthService::class)->beat('autopilot_started');
         $t0 = microtime(true);
         $wf = app(WorkflowControlService::class);
         $policy = app(AutonomyPolicyService::class);
@@ -93,7 +101,12 @@ class AutopilotRunner
                     $companies = Company::whereNotNull('website')->whereHas('leads')
                         ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
                         ->limit((int) $cfg['audits_per_cycle'])->get();
+                    $deadline = microtime(true) + (int) ($cfg['audit_seconds'] ?? 150);
                     foreach ($companies as $c) {
+                        if (microtime(true) > $deadline) {
+                            $res['audit_time_budget_reached'] = true;
+                            break;
+                        }
                         if (!$dryRun) {
                             try {
                                 app(WebsiteAuditService::class)->audit($c);
@@ -123,7 +136,12 @@ class AutopilotRunner
                                 ->where(fn ($q) => $q->whereNull('last_verified_at')->orWhere('last_verified_at', '<', $recheckBefore))))
                         ->orderByRaw("CASE WHEN email_verification_status = 'unverified' THEN 0 ELSE 1 END")
                         ->limit(10)->get();
+                    $deadline = microtime(true) + (int) ($cfg['verify_seconds'] ?? 90);
                     foreach ($leads as $l) {
+                        if (microtime(true) > $deadline) {
+                            $res['verify_time_budget_reached'] = true;
+                            break;
+                        }
                         if (!$dryRun) {
                             try {
                                 app(EmailVerificationService::class)->verifyEmail($l->email, $l);

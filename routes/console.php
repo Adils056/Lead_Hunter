@@ -368,6 +368,80 @@ Artisan::command('leadpilot:go-autonomous {--live : Also switch outreach mode to
     return 0;
 })->purpose('Fully autonomous mode: auto-build targets, verify, score and send first emails within the guardrails');
 
+Artisan::command('leadpilot:status', function (\App\Services\Outreach\SequenceEngine $sequence) {
+    // One-screen answer to "is everything working right now?": each stage of the pipeline with PASS / WARN / FAIL.
+    $rows = [];
+    $bad = 0;
+    $add = function (string $status, string $stage, string $detail) use (&$rows, &$bad) {
+        $bad += $status === 'FAIL' ? 1 : 0;
+        $rows[] = [$status === 'PASS' ? '<info>PASS</info>' : ($status === 'FAIL' ? '<error>FAIL</error>' : "<comment>{$status}</comment>"), $stage, $detail];
+    };
+    $beat = fn (string $c) => \App\Models\SystemHeartbeat::where('component', $c)->first();
+    $ago = fn ($t) => $t ? $t->diffForHumans() : 'never';
+    $health = fn (string $p) => \App\Models\ProviderHealth::where('provider', $p)->first();
+    $settings = \App\Models\OutreachSetting::current();
+    $tz = config('leadpilot.timezone');
+
+    foreach (['scheduler' => [5, 'Cron (scheduler)'], 'queue_worker' => [15, 'Queue worker'], 'autopilot' => [35, 'Autopilot cycle']] as $c => [$max, $label]) {
+        $hb = $beat($c);
+        $fresh = $hb && $hb->beat_at->gt(now()->subMinutes($max));
+        $stepsOk = $c !== 'autopilot' || ($hb->meta['ok'] ?? false);
+        $detail = 'last run ' . $ago($hb?->beat_at) . ($c === 'autopilot' && $hb && !$stepsOk ? ' — a step failed: php artisan leadpilot:autopilot' : '');
+        $started = $c === 'autopilot' ? $beat('autopilot_started') : null;
+        if ($started && (!$hb || $started->beat_at->gt($hb->beat_at))) {
+            $detail .= ' · a cycle started ' . $ago($started->beat_at) . ' has not finished'
+                . ($started->beat_at->lt(now()->subMinutes(20)) ? ' (killed by the host?) — php artisan leadpilot:autopilot --unlock' : '');
+        }
+        $add($fresh && $stepsOk ? 'PASS' : 'FAIL', $label, $detail);
+    }
+
+    $new24 = \App\Models\Lead::where('created_at', '>=', now()->subDay())->count();
+    $add($new24 > 0 ? 'PASS' : 'WARN', 'Discovery', "{$new24} new lead(s) in 24 h · " . \App\Models\Lead::count() . ' total · ' . \App\Models\IcpProfile::where('is_active', true)->count() . ' active target profile(s)');
+
+    $checked24 = \App\Models\Lead::where('last_verified_at', '>=', now()->subDay())->count();
+    $byStatus = \App\Models\Lead::whereNotNull('email')->selectRaw('email_verification_status s, count(*) n')->groupBy('s')->pluck('n', 's');
+    $add($checked24 > 0 || ($byStatus[\App\Support\EmailStatus::UNVERIFIED] ?? 0) === 0 ? 'PASS' : 'WARN', 'Email check',
+        "{$checked24} checked in 24 h · " . $byStatus->map(fn ($n, $st) => \App\Support\EmailStatus::label($st) . " {$n}")->implode(', '));
+
+    $rungA = \App\Models\Lead::where('win_tier', 'A')->whereIn('email_verification_status', \App\Support\EmailStatus::sendableStatuses($settings))->count();
+    $add($rungA > 0 ? 'PASS' : 'WARN', 'Ready to email (rung A)', "{$rungA} lead(s)" . ($rungA ? '' : ' — normal in the first hours; leads need audit + verified email + score'));
+
+    $modeOk = $settings->mode === 'live' && !$settings->isEmergencyStopped();
+    $add($modeOk ? 'PASS' : 'WARN', 'Outreach mode', $settings->mode . ($settings->isEmergencyStopped() ? ' · EMERGENCY STOP ON' : '') . ' · first emails today cap ' . $settings->firstTouchCap());
+
+    $sentToday = \App\Models\CampaignRecipient::where('sent_at', '>=', now($tz)->startOfDay()->utc())->count();
+    $failedToday = \App\Models\CampaignRecipient::where('status', 'failed')->where('updated_at', '>=', now($tz)->startOfDay()->utc())->count();
+    $window = $sequence->inSendingWindow();
+    $sentRecent = \App\Models\CampaignRecipient::where('sent_at', '>=', now()->subHours(2))->exists();
+    $stalled = $modeOk && $window && $rungA > 0 && !$sentRecent && now($tz)->hour >= 11;
+    $add($failedToday ? 'FAIL' : ($stalled ? 'WARN' : 'PASS'), 'Sending',
+        "{$sentToday} sent today" . ($failedToday ? " · {$failedToday} FAILED" : '') . ' · ' . ($window ? 'inside sending window' : 'outside window, next ' . $sequence->nextSendTime()->timezone($tz)->format('D H:i')));
+
+    $sent7 = \App\Models\CampaignRecipient::where('sent_at', '>=', now()->subDays(7))->count();
+    $bounced7 = \App\Models\CampaignRecipient::where('status', 'bounced')->where('updated_at', '>=', now()->subDays(7))->count();
+    $rate = $sent7 ? round(100 * $bounced7 / $sent7, 1) : 0;
+    $add($rate > 5 ? 'FAIL' : ($rate > 2 ? 'WARN' : 'PASS'), 'Bounce rate (7 d)', "{$rate}% ({$bounced7} of {$sent7})" . ($rate > 5 ? ' — press Emergency Stop and check the leads' : ''));
+
+    $smtp = $health('smtp');
+    $add($smtp && $smtp->consecutive_failures === 0 ? 'PASS' : ($smtp ? 'FAIL' : 'WARN'), 'SMTP (sending)', $smtp ? 'last OK ' . $ago($smtp->last_success_at) . ($smtp->consecutive_failures ? " · {$smtp->consecutive_failures} failure(s): " . mb_substr((string) $smtp->last_error, 0, 80) : '') : 'never tested: php artisan leadpilot:mail-test <admin email>');
+
+    if (config('leadpilot.imap.enabled')) {
+        $imap = $health('imap');
+        $fresh = $imap && $imap->last_success_at && $imap->last_success_at->gt(now()->subHour()) && $imap->consecutive_failures === 0;
+        $add($fresh ? 'PASS' : 'FAIL', 'Reply sync (IMAP)', 'last OK ' . $ago($imap?->last_success_at) . ' · ' . \App\Models\InboundReply::where('created_at', '>=', now()->subDays(7))->count() . ' repl(ies) in 7 d');
+    } else {
+        $add('WARN', 'Reply sync (IMAP)', 'off — replies are not read, follow-ups will not stop on a reply');
+    }
+
+    $open = \App\Models\Incident::where('status', 'open')->latest()->get();
+    $add($open->isEmpty() ? 'PASS' : 'WARN', 'Open incidents', $open->isEmpty() ? 'none' : $open->count() . ': ' . mb_substr($open->pluck('title')->implode('; '), 0, 100));
+
+    $this->table(['Status', 'Stage', 'Detail'], $rows);
+    $bad ? $this->error("{$bad} stage(s) FAILING — fix those first.") : $this->info('No failures. WARN lines are expected while leads are still being built up or outside the sending window.');
+
+    return $bad ? 1 : 0;
+})->purpose('One-screen PASS/WARN/FAIL status of every pipeline stage');
+
 Artisan::command('leadpilot:reverify-emails {--status=mx_only : Comma-separated statuses to re-check} {--limit=200}', function (\App\Services\EmailVerificationService $verifier) {
     // P0-3 follow-up: re-runs the verification waterfall (cache bypassed) for leads whose mailbox was never proven.
     $statuses = array_values(array_intersect(array_map('trim', explode(',', (string) $this->option('status'))), \App\Support\EmailStatus::ALL));
@@ -395,7 +469,11 @@ Artisan::command('leadpilot:reverify-emails {--status=mx_only : Comma-separated 
 | v4 Autopilot commands
 |--------------------------------------------------------------------------
 */
-Artisan::command('leadpilot:autopilot {--dry-run : Plan only; no searches, sends or writes}', function (\App\Services\Autopilot\AutopilotRunner $runner) {
+Artisan::command('leadpilot:autopilot {--dry-run : Plan only; no searches, sends or writes} {--unlock : Clear a cycle lock left behind by a killed run, then run}', function (\App\Services\Autopilot\AutopilotRunner $runner) {
+    if ($this->option('unlock')) {
+        \Illuminate\Support\Facades\Cache::lock(\App\Services\Autopilot\AutopilotRunner::LOCK)->forceRelease();
+        $this->warn('Cycle lock cleared.');
+    }
     $res = $runner->run((bool) $this->option('dry-run'));
     $this->line(json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 })->purpose('Run one autopilot cycle (discover, enrich, score, outreach, follow-ups, replies, monitoring)');
