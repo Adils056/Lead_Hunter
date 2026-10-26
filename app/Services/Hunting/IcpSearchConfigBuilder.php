@@ -79,7 +79,13 @@ class IcpSearchConfigBuilder
                     'limit' => min($limit, 25),
                 ],
                 'ats_watchlist' => [
-                    'watchlist' => array_values(array_filter($keywords, fn ($k) => preg_match('/^(greenhouse|lever):/i', $k))),
+                    'watchlist' => array_values(array_filter($keywords, fn ($k) => preg_match('/^(greenhouse|lever|ashby|workable):/i', $k))),
+                    'auto' => true, // also re-check boards that website audits found on companies' own sites
+                    'limit' => $limit,
+                ],
+                'hn_hiring' => [
+                    'countries' => $icp->list('countries'),
+                    'limit' => $limit,
                 ],
                 'public_job_demand' => [
                     'keywords' => $keywords ?: ['laravel', 'php'],

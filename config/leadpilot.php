@@ -303,7 +303,7 @@ return [
     'providers' => [
         'local_discovery' => ['overture_places', 'osm_overpass', 'google_places'], // Overture has the most contact data; all free-first
         'procurement' => ['uk_contracts_finder', 'uk_find_a_tender', 'eu_ted'],
-        'hiring_signals' => ['ats_watchlist', 'public_job_demand'],
+        'hiring_signals' => ['ats_watchlist', 'hn_hiring', 'public_job_demand'],
         'b2b_discovery' => ['wikidata_orgs', 'apollo_orgs'], // free keyless Wikidata first; Apollo only with a key + budget
         'email_verification' => ['dns_mx', 'hunter'],
         'website_performance' => ['pagespeed'],
@@ -354,6 +354,10 @@ return [
             'retail' => ['label' => 'Retail & showrooms', 'niches' => ['furniture', 'clothes', 'jewel', 'electronics', 'car'], 'services' => ['ecommerce', 'erp_pos'], 'type' => 'local_business'],
             'b2b' => ['label' => 'Companies (B2B)', 'niches' => ['software company', 'it company', 'marketing agency', 'logistics'], 'services' => ['custom_software', 'laravel_php'], 'type' => 'b2b'],
             'tenders' => ['label' => 'Public tenders', 'niches' => [], 'services' => ['web_dev', 'custom_software'], 'type' => 'government', 'countries' => ['United Kingdom']],
+            // One profile across all approved countries: companies announcing developer hiring (HN "Who is hiring",
+            // and job boards found on audited websites). Hiring is the strongest free buying signal we can see.
+            'hiring' => ['label' => 'Companies hiring developers', 'niches' => ['php', 'laravel', 'web developer', 'full stack'], 'services' => ['laravel_php', 'custom_software'],
+                'type' => 'b2b', 'global' => true, 'sources' => ['hn_hiring', 'ats_watchlist']],
         ],
     ],
 

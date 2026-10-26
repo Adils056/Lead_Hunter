@@ -155,8 +155,20 @@ class WebsiteAuditService
             }
         }
         $domain = Company::normalizeDomain($finalUrl);
+        $board = null;
         foreach ($pages as $pageUrl => $body) {
             $this->extractContacts($body, $pageUrl, $domain, $contacts);
+            // A careers link to a public job board lets the hiring-signal source check this company's open roles.
+            if (!$board && preg_match_all('#https?://[^"\'\s<>]+#i', $body, $links)) {
+                foreach ($links[0] as $link) {
+                    if ($board = \App\Services\Discovery\Adapters\GreenhouseLeverWatchlistAdapter::boardFromUrl($link)) {
+                        break;
+                    }
+                }
+            }
+        }
+        if ($board && $company->ats_board !== $board) {
+            $company->update(['ats_board' => $board]);
         }
         $contactPageHasForm = false;
         foreach ($pages as $pageUrl => $body) {
