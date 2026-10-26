@@ -107,6 +107,29 @@ class AutoMarketTest extends TestCase
         $this->assertSame(0, $out['steps']['enrichment']['result']['audited']);
     }
 
+    public function test_an_audited_local_business_is_not_held_down_by_growth_data_it_can_never_have(): void
+    {
+        $icp = IcpProfile::create(['name' => 'Lahore clinics', 'is_active' => true, 'countries' => ['Pakistan'], 'cities' => ['Lahore'], 'niches' => ['dentist'],
+            'business_types' => ['local_business'], 'target_services' => ['web_redesign'], 'website_requirement' => 'any', 'max_results_per_run' => 10]);
+        $make = function (?int $opportunity) use ($icp) {
+            $c = \App\Models\Company::create(['name' => 'Smile Dental ' . uniqid(), 'website' => 'https://smile' . uniqid() . '.pk', 'country' => 'Pakistan', 'city' => 'Lahore',
+                'industry' => 'Dentist', 'public_phone' => '+92 42 1234567', 'source_provider' => 'osm_overpass',
+                'website_opportunity_score' => $opportunity, 'website_audited_at' => $opportunity === null ? null : now()]);
+            $l = \App\Models\Lead::create(['company_id' => $c->id, 'icp_profile_id' => $icp->id, 'first_name' => 'Info', 'email' => 'info@' . parse_url($c->website, PHP_URL_HOST),
+                'email_verification_status' => 'verified', 'contact_status' => 'generic_inbox', 'country' => 'Pakistan', 'source_name' => 'OpenStreetMap (Overpass)']);
+
+            return app(\App\Services\LeadScoringService::class)->evaluateLead($l)->overall_score;
+        };
+
+        $weakSite = $make(60);
+        $goodSite = $make(15);
+        $notAudited = $make(null);
+
+        $this->assertGreaterThanOrEqual(\App\Support\ScoreBands::qualified(), $weakSite, 'audited weak website + verified inbox qualifies');
+        $this->assertLessThan(\App\Support\ScoreBands::qualified(), $goodSite, 'a good website is still not a winning lead');
+        $this->assertLessThan(\App\Support\ScoreBands::qualified(), $notAudited, 'no evidence, no lift');
+    }
+
     public function test_first_touch_cap_warms_up_after_going_live(): void
     {
         config(['leadpilot.autopilot.max_first_touch_per_day' => 25, 'leadpilot.autopilot.ramp' => ['days' => 3, 'cap' => 10]]);
