@@ -43,7 +43,7 @@ Route::middleware(['auth'])->group(function () {
     // Companies
     Route::get('/companies/export', [CompanyController::class, 'export'])->name('companies.export');
     Route::post('/companies/{company}/research', [CompanyController::class, 'triggerAiResearch'])->name('companies.research');
-    Route::resource('companies', CompanyController::class);
+    Route::resource('companies', CompanyController::class)->except(['destroy']);
 
     // Leads & Contacts
     Route::get('/leads/export', [LeadController::class, 'export'])->name('leads.export');
@@ -55,7 +55,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/leads/import/process', [LeadController::class, 'processImport'])->name('leads.import.process');
     Route::post('/leads/{lead}/rescore', [LeadController::class, 'rescore'])->name('leads.rescore');
     Route::post('/leads/{lead}/verify-email', [LeadController::class, 'verifyEmail'])->name('leads.verify-email');
-    Route::resource('leads', LeadController::class);
+    Route::resource('leads', LeadController::class)->except(['destroy']);
 
     // Buying Intent Signals
     Route::get('/buying-signals', [BuyingSignalController::class, 'index'])->name('buying-signals.index');
@@ -78,7 +78,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/campaigns/{campaign}/emergency-stop', [CampaignController::class, 'emergencyStop'])->name('campaigns.emergency-stop');
     Route::post('/campaigns/{campaign}/test-email', [CampaignController::class, 'sendTestEmail'])->name('campaigns.test-email');
     Route::post('/campaigns/recipients/{recipient}/dispatch', [CampaignController::class, 'dispatchRecipient'])->name('campaigns.recipient.dispatch');
-    Route::resource('campaigns', CampaignController::class);
+    Route::resource('campaigns', CampaignController::class)->only(['index', 'create', 'store', 'show']);
 
     // Analytics & Reporting
     Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');

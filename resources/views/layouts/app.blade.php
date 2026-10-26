@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
@@ -35,6 +35,8 @@
             --lp-text-dark: #0f172a;
             --lp-text-muted: #64748b;
         }
+
+        [x-cloak] { display: none !important; }
 
         body {
             font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -281,23 +283,55 @@
             background-color: #f8fafc;
         }
 
+        /* Score / status pills and button labels never break inside ("94 pts", "Edi|t", "New|ICP") */
+        .badge-lp, .badge, .content-body .btn { white-space: nowrap; }
+
+        /* Page headers: when title and action buttons do not fit on one line, the buttons move below */
+        .content-body .d-flex.justify-content-between { flex-wrap: wrap; gap: 0.75rem; }
+
+        /* Long e-mails, URLs and names inside flex rows wrap instead of widening the page */
+        .content-body .d-flex > span, .content-body .d-flex > a:not(.btn), .content-body dd, .content-body .card-lp p {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+        .content-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .content-body .font-monospace, .content-body code { overflow-wrap: anywhere; }
+        .content-body img { max-width: 100%; height: auto; }
+
+        .sidebar-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            z-index: 1035;
+        }
+
         @media (max-width: 991.98px) {
             #sidebar {
                 transform: translateX(-100%);
+                box-shadow: none; /* the hidden drawer's shadow otherwise shows on the left edge */
             }
             #sidebar.active {
                 transform: translateX(0);
+                box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
             }
             #main-content {
                 margin-left: 0;
+                min-width: 0;
             }
+            .top-navbar { padding: 0 1rem; }
+            .content-body { padding: 1rem; }
+            /* page headers and toolbars: let title, filters and buttons stack instead of squeezing */
+            .content-body .btn-group,
+            .content-body .d-flex:has(> .badge, > .btn, > form) { flex-wrap: wrap; gap: 0.5rem; }
+            .content-body .btn-group > .btn { flex: 0 0 auto; }
         }
     </style>
 </head>
 <body x-data="{ mobileNavOpen: false }">
 
     <!-- Sidebar Navigation -->
-    <aside id="sidebar" :class="{ 'active': mobileNavOpen }">
+    <div class="sidebar-backdrop d-lg-none" x-cloak x-show="mobileNavOpen" x-transition.opacity @click="mobileNavOpen = false"></div>
+    <aside id="sidebar" :class="{ 'active': mobileNavOpen }" @keydown.escape.window="mobileNavOpen = false">
         <div class="sidebar-brand">
             <div class="logo-icon">
                 <i class="bi bi-radar"></i>
@@ -512,6 +546,16 @@
 
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Every data table scrolls inside its card on small screens instead of widening the whole page.
+        document.querySelectorAll('.content-body table').forEach(function (t) {
+            if (t.closest('.table-responsive')) return;
+            var w = document.createElement('div');
+            w.className = 'table-responsive';
+            t.parentNode.insertBefore(w, t);
+            w.appendChild(t);
+        });
+    </script>
     @stack('scripts')
 </body>
 </html>
