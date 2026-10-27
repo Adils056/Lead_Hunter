@@ -111,7 +111,8 @@
             </div>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
-                <input type="password" name="password" id="password" class="form-control border-start-0" placeholder="••••••••" @if(app()->environment('local')) value="password123" @endif required>
+                <input type="password" name="password" id="password" class="form-control border-start-0 border-end-0" placeholder="••••••••" @if(app()->environment('local')) value="password123" @endif required autocomplete="current-password">
+                <button type="button" class="btn btn-light border border-start-0 text-muted" data-toggle-password="password" aria-label="Show password" title="Show password"><i class="bi bi-eye"></i></button>
             </div>
         </div>
 
@@ -153,6 +154,20 @@
     </div>
     @endif
 </div>
+
+<script>
+// Show / hide password: the eye button next to each password field
+document.querySelectorAll('[data-toggle-password]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.dataset.togglePassword);
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        btn.title = btn.getAttribute('aria-label');
+    });
+});
+</script>
 
 @if(app()->environment('local'))
 <script>
