@@ -241,6 +241,9 @@ return [
     // settings). The very first account of an empty installation becomes admin so a fresh server can be set up.
     'registration' => [
         'enabled' => (bool) env('LEADPILOT_ALLOW_REGISTRATION', true),
+        // Private sign-up link: when set, /register opens only as /register?key=<this value> and the login page shows
+        // no "Create an account" link, so only people the owner sends the link to can create an account.
+        'key' => env('LEADPILOT_REGISTRATION_KEY') ?: null,
         'default_role' => env('LEADPILOT_REGISTRATION_ROLE', 'sales'),
     ],
 

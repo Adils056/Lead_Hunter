@@ -128,7 +128,7 @@
         </button>
     </form>
 
-    @if(config('leadpilot.registration.enabled', true))
+    @if(config('leadpilot.registration.enabled', true) && !config('leadpilot.registration.key'))
     <div class="text-center small text-muted mb-3">
         New here? <a href="{{ route('register') }}" class="fw-semibold text-decoration-none">Create an account</a>
     </div>

@@ -66,4 +66,19 @@ class RegistrationTest extends TestCase
         config(['leadpilot.registration.enabled' => true]);
         $this->actingAs(User::factory()->create(['role' => 'sales']))->get('/register')->assertRedirect(route('dashboard'));
     }
+
+    public function test_private_sign_up_link_opens_registration_only_with_its_key_and_hides_the_login_link(): void
+    {
+        config(['leadpilot.registration.key' => 'team-secret-123']);
+
+        $this->get('/login')->assertOk()->assertDontSee('Create an account');
+        $this->get('/register')->assertNotFound();
+        $this->get('/register?key=wrong')->assertNotFound();
+        $this->post('/register', $this->valid)->assertNotFound();
+        $this->post('/register', ['key' => 'wrong'] + $this->valid)->assertNotFound();
+
+        $this->get('/register?key=team-secret-123')->assertOk()->assertSee('Create your account')->assertSee('name="key" value="team-secret-123"', false);
+        $this->post('/register', ['key' => 'team-secret-123'] + $this->valid)->assertRedirect(route('dashboard'));
+        $this->assertSame(1, User::count());
+    }
 }
