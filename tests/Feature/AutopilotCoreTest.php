@@ -318,6 +318,7 @@ class AutopilotCoreTest extends TestCase
     public function test_meeting_slots_are_real_free_working_hours_on_distinct_weekdays(): void
     {
         $from = Carbon::parse('2026-10-23 10:00', 'Asia/Karachi'); // Friday
+        $this->travelTo($from); // the busy meeting must still be in the future, whatever day the suite runs
         Meeting::create(['lead_id' => Lead::create(['full_name' => 'm'])->id, 'host_user_id' => $this->admin->id, 'title' => 'busy',
             'scheduled_start' => Carbon::parse('2026-10-26 10:00', 'Asia/Karachi')->utc(), 'scheduled_end' => Carbon::parse('2026-10-26 10:30', 'Asia/Karachi')->utc(), 'status' => 'scheduled']);
         $slots = app(MeetingSlotService::class)->slots(3, $from->copy()->utc());

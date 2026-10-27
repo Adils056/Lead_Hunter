@@ -105,7 +105,10 @@ class AutopilotRunner
                     // rung A. The rest follow (their audit is also how a contact e-mail gets found on the website).
                     $companies = $due()->whereHas('leads', fn ($q) => $q->whereIn('email_verification_status', EmailStatus::sendableStatuses()))->limit($n)->get();
                     if ($companies->count() < $n) {
-                        $companies = $companies->concat($due()->whereNotIn('id', $companies->pluck('id'))->limit($n - $companies->count())->get());
+                        // companies that asked for developers next: their audit usually finds the inbox to answer them on
+                        $companies = $companies->concat($due()->whereNotIn('id', $companies->pluck('id'))
+                            ->withExists(['buyingSignals as asked' => fn ($q) => $q->whereIn('signal_type', ['developer_hiring', 'vendor_request', 'project_requirements'])])
+                            ->orderByDesc('asked')->limit($n - $companies->count())->get());
                     }
                     $deadline = microtime(true) + (int) ($cfg['audit_seconds'] ?? 150);
                     foreach ($companies as $c) {

@@ -44,6 +44,9 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
         'Pakistan' => '/\b(Pakistan|Lahore|Karachi|Islamabad)\b/',
     ];
 
+    /** Links in a post that are never the company's own website (job boards, social, video, news, shorteners). */
+    public const NOT_A_COMPANY_SITE = '/(^|\.)(ycombinator\.com|greenhouse\.io|grnh\.se|lever\.co|ashbyhq\.com|workable\.com|gem\.com|linkedin\.com|github\.com|notion\.(site|so)|google\.com|forms\.gle|wellfound\.com|angel\.co|youtube\.com|youtu\.be|twitter\.com|x\.com|medium\.com|substack\.com|bit\.ly|tinyurl\.com|workatastartup\.com|rippling\.com|bamboohr\.com|jobvite\.com|smartrecruiters\.com|recruitee\.com|breezy\.hr|teamtailor\.com|dover\.(com|io)|typeform\.com|calendly\.com|airtable\.com|mercurynews\.com|techcrunch\.com|bloomberg\.com|forbes\.com|reuters\.com|nytimes\.com|wsj\.com)$/';
+
     public function isConfigured(): bool
     {
         return true;
@@ -160,28 +163,33 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
         if (preg_match_all('#https?://[^\s<>"]+#i', strip_tags($decoded), $m2)) {
             $links = array_merge($links, $m2[0]);
         }
-        $website = null;
         $board = null;
+        $candidates = [];
         foreach ($links as $l) {
             $l = rtrim($l, '.,);');
             $board ??= GreenhouseLeverWatchlistAdapter::boardFromUrl($l);
-            $host = strtolower((string) parse_url($l, PHP_URL_HOST));
-            if ($website === null && $host !== '' && !preg_match('/(ycombinator\.com|greenhouse\.io|lever\.co|ashbyhq\.com|workable\.com|linkedin\.com|github\.com|notion\.site|google\.com|forms\.gle|wellfound\.com|angel\.co)$/', $host)) {
-                $website = 'https://' . preg_replace('/^www\./', '', $host);
+            $host = preg_replace('/^www\./', '', strtolower((string) parse_url($l, PHP_URL_HOST)));
+            if ($host !== '' && !preg_match(self::NOT_A_COMPANY_SITE, $host)) {
+                $candidates[] = $host;
             }
         }
 
         $text = trim(preg_replace('/\s+/', ' ', strip_tags(str_ireplace(['<p>', '<br>'], ' ', $decoded))));
         $email = preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $text, $em) ? strtolower($em[0]) : null;
 
+        // The website is the poster's business e-mail domain, else a link carrying the company's name. A post that
+        // only links a job board, a video or a news article gets no website: better none than someone else's.
         $free = (array) config('leadpilot.free_mail_domains', []);
         $mailHost = $email ? substr(strrchr($email, '@'), 1) : null;
-        if ($website === null && $mailHost && !in_array($mailHost, $free, true)) {
-            $website = 'https://' . $mailHost;
-        }
-        if ($company !== null && preg_match('/^seeking\b/i', $company)) {
+        $seeking = $company !== null && preg_match('/^seeking\b/i', $company);
+        $host = match (true) {
+            $mailHost && !in_array($mailHost, $free, true) && !preg_match(self::NOT_A_COMPANY_SITE, $mailHost) => $mailHost,
+            $seeking => $candidates[0] ?? null, // no name to compare: the poster's own link
+            default => collect($candidates)->first(fn ($h) => self::siteMatchesName($h, (string) $company)),
+        };
+        $website = $host ? 'https://' . $host : null;
+        if ($seeking) {
             // "SEEKING FREELANCER | Location | ..." names no company: use the poster's own site, never invent one
-            $host = $website ? preg_replace('/^www\./', '', (string) parse_url($website, PHP_URL_HOST)) : null;
             $company = $host ? ucfirst(explode('.', $host)[0]) : null;
         }
 
@@ -195,5 +203,18 @@ class HnWhoIsHiringAdapter extends AbstractDiscoveryAdapter
         }
 
         return ['company' => $company, 'website' => $website, 'ats_board' => $board, 'email' => $email, 'country' => $country, 'location' => $location ?: null, 'text' => $text];
+    }
+
+    /** "Curai" ~ curaihealth.com, "Sidekick Labs" ~ sidekicklabs.com; "Paramark" !~ mercurynews.com. */
+    public static function siteMatchesName(string $host, string $company): bool
+    {
+        $label = preg_replace('/[^a-z0-9]/', '', explode('.', preg_replace('/^www\./', '', strtolower($host)))[0]);
+        $slug = preg_replace('/[^a-z0-9]/', '', strtolower($company));
+        $first = preg_replace('/[^a-z0-9]/', '', strtolower(strtok(trim($company), ' ') ?: ''));
+        if (strlen($label) < 3 || $slug === '') {
+            return false;
+        }
+
+        return (strlen($first) >= 3 && str_contains($label, $first)) || str_contains($slug, $label);
     }
 }
