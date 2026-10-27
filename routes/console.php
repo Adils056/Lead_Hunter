@@ -411,11 +411,16 @@ Artisan::command('leadpilot:status', function (\App\Services\Outreach\SequenceEn
 
     $sentToday = \App\Models\CampaignRecipient::where('sent_at', '>=', now($tz)->startOfDay()->utc())->count();
     $failedToday = \App\Models\CampaignRecipient::where('status', 'failed')->where('updated_at', '>=', now($tz)->startOfDay()->utc())->count();
-    $window = $sequence->inSendingWindow();
+    // each e-mail leaves inside its prospect's own working hours (their country's time zone and working days)
+    $queued = \App\Models\CampaignRecipient::with('lead.company')->where('status', 'approved')->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))->limit(200)->get();
+    $openNow = $queued->filter(fn ($r) => $sequence->inSendingWindow(null, $r->lead))->count();
+    $window = $openNow > 0;
     $sentRecent = \App\Models\CampaignRecipient::where('sent_at', '>=', now()->subHours(2))->exists();
-    $stalled = $modeOk && $window && $rungA > 0 && !$sentRecent && now($tz)->hour >= 11;
+    $overdue = $queued->filter(fn ($r) => (!$r->scheduled_at || $r->scheduled_at->lt(now()->subHour())) && $sequence->inSendingWindow(null, $r->lead))->isNotEmpty();
+    $stalled = $modeOk && $overdue && !$sentRecent && $sentToday < $settings->firstTouchCap();
     $add($failedToday ? 'FAIL' : ($stalled ? 'WARN' : 'PASS'), 'Sending',
-        "{$sentToday} sent today" . ($failedToday ? " · {$failedToday} FAILED" : '') . ' · ' . ($window ? 'inside sending window' : 'outside window, next ' . $sequence->nextSendTime()->timezone($tz)->format('D H:i')));
+        "{$sentToday} sent today" . ($failedToday ? " · {$failedToday} FAILED" : '') . " · {$queued->count()} queued: {$openNow} inside the prospect's working hours now, "
+        . ($queued->count() - $openNow) . ' waiting for theirs');
 
     $sent7 = \App\Models\CampaignRecipient::where('sent_at', '>=', now()->subDays(7))->count();
     $bounced7 = \App\Models\CampaignRecipient::where('status', 'bounced')->where('updated_at', '>=', now()->subDays(7))->count();
