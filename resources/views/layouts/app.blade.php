@@ -400,6 +400,10 @@
                 <i class="bi bi-kanban-fill"></i>
                 <span>Sales Pipeline</span>
             </a>
+            <a href="{{ route('outbox.index') }}" class="nav-link-custom {{ request()->routeIs('outbox.*') ? 'active' : '' }}">
+                <i class="bi bi-envelope-paper-fill"></i>
+                <span>Sent &amp; Replies</span>
+            </a>
             <a href="{{ route('campaigns.index') }}" class="nav-link-custom {{ request()->routeIs('campaigns.*') ? 'active' : '' }}">
                 <i class="bi bi-send-check-fill"></i>
                 <span>Campaign Automation</span>
