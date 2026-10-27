@@ -73,14 +73,16 @@
                 <label class="form-label small fw-semibold text-secondary" for="password">Password</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
-                    <input type="password" name="password" id="password" class="form-control border-start-0" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                    <input type="password" name="password" id="password" class="form-control border-start-0 border-end-0" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                <button type="button" class="btn btn-light border border-start-0 text-muted" data-toggle-password="password" aria-label="Show password" title="Show password"><i class="bi bi-eye"></i></button>
                 </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label small fw-semibold text-secondary" for="password_confirmation">Confirm password</label>
                 <div class="input-group">
                     <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock-fill"></i></span>
-                    <input type="password" name="password_confirmation" id="password_confirmation" class="form-control border-start-0" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                    <input type="password" name="password_confirmation" id="password_confirmation" class="form-control border-start-0 border-end-0" placeholder="••••••••" required minlength="8" autocomplete="new-password">
+                <button type="button" class="btn btn-light border border-start-0 text-muted" data-toggle-password="password_confirmation" aria-label="Show password" title="Show password"><i class="bi bi-eye"></i></button>
                 </div>
             </div>
         </div>
@@ -103,5 +105,18 @@
     </div>
 </div>
 
+<script>
+// Show / hide password: the eye button next to each password field
+document.querySelectorAll('[data-toggle-password]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.dataset.togglePassword);
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        btn.title = btn.getAttribute('aria-label');
+    });
+});
+</script>
 </body>
 </html>
