@@ -137,6 +137,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/approvals/{approval}', [\App\Http\Controllers\ApprovalController::class, 'show'])->name('approvals.show');
     Route::post('/approvals/{approval}/decide', [\App\Http\Controllers\ApprovalController::class, 'decide'])->name('approvals.decide')->middleware('throttle:60,1');
 
+    Route::get('/outbox', [\App\Http\Controllers\OutboxController::class, 'index'])->name('outbox.index');
+    Route::get('/outbox/{recipient}', [\App\Http\Controllers\OutboxController::class, 'show'])->name('outbox.show');
+
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::get('/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'read'])->name('notifications.read');
     Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');
