@@ -44,6 +44,7 @@
 
     <form action="{{ route('register.post') }}" method="POST" autocomplete="on">
         @csrf
+        @if($key)<input type="hidden" name="key" value="{{ $key }}">@endif
         <div class="mb-3">
             <label class="form-label small fw-semibold text-secondary" for="name">Full name</label>
             <div class="input-group">

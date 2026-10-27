@@ -98,24 +98,29 @@ class AuthController extends Controller
 
     // ------------------------------------------------------------ self-service registration
 
-    protected function registrationEnabled(): bool
+    protected function registrationEnabled(?Request $request = null): bool
     {
-        return (bool) config('leadpilot.registration.enabled', true);
+        if (!config('leadpilot.registration.enabled', true)) {
+            return false;
+        }
+        $key = (string) config('leadpilot.registration.key');
+
+        return $key === '' || hash_equals($key, (string) $request?->input('key'));
     }
 
-    public function showRegister()
+    public function showRegister(Request $request)
     {
         if (Auth::check()) {
             return redirect()->route('dashboard');
         }
-        abort_unless($this->registrationEnabled(), 404);
+        abort_unless($this->registrationEnabled($request), 404);
 
-        return view('auth.register', ['firstUser' => User::count() === 0]);
+        return view('auth.register', ['firstUser' => User::count() === 0, 'key' => config('leadpilot.registration.key') ? $request->input('key') : null]);
     }
 
     public function register(Request $request)
     {
-        abort_unless($this->registrationEnabled(), 404);
+        abort_unless($this->registrationEnabled($request), 404);
         $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
 
         $data = $request->validate([
