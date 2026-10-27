@@ -17,6 +17,7 @@ use App\Services\CampaignDeliveryService;
 use App\Services\EligibilityGateService;
 use App\Services\Sales\ConversionAssistantService;
 use App\Support\ScoreBands;
+use App\Support\LocalTime;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
@@ -107,7 +108,7 @@ class SequenceEngine
                 'personalized_subject' => $draft['draft']['subject'],
                 'personalized_body' => $draft['draft']['body'],
                 'facts_used' => $draft['facts_used'],
-                'scheduled_at' => $this->nextSendTime(),
+                'scheduled_at' => $this->nextSendTime(null, $lead),
             ]);
             if ($auto) {
                 $out['planned']++;
@@ -181,7 +182,7 @@ class SequenceEngine
                 'idempotency_key' => "ap_{$rec->campaign_id}_{$lead->id}_" . ($step + 1),
                 'personalized_subject' => 'Re: ' . preg_replace('/^(re:\s*)+/i', '', (string) $rec->personalized_subject),
                 'personalized_body' => $f['draft'],
-                'scheduled_at' => $this->nextSendTime(),
+                'scheduled_at' => $this->nextSendTime(null, $lead),
             ]);
             if ($auto) {
                 $out['created']++;
@@ -199,15 +200,10 @@ class SequenceEngine
         return $out;
     }
 
-    /** Send approved, due messages inside the sending window. */
+    /** Send approved, due messages, each inside its prospect's own working hours. */
     public function dispatchDue(int $limit = 20): array
     {
         $out = ['sent' => 0, 'not_sent' => [], 'outside_window' => false];
-        if (!$this->inSendingWindow()) {
-            $out['outside_window'] = true;
-
-            return $out;
-        }
         $firstToday = CampaignRecipient::where('sequence_step', 1)->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->where('sent_at', '>=', now(config('leadpilot.timezone'))->startOfDay()->utc())->count();
         $cap = OutreachSetting::current()->firstTouchCap();
@@ -215,9 +211,18 @@ class SequenceEngine
         $due = CampaignRecipient::with('campaign', 'lead')->where('status', 'approved')
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->where(fn ($q) => $q->whereNull('scheduled_at')->orWhere('scheduled_at', '<=', now()))
-            ->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit)->get();
+            ->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit * 10)->get();
 
+        $tried = 0;
+        $outside = 0;
         foreach ($due as $rec) {
+            if (!$this->inSendingWindow(null, $rec->lead)) {
+                $outside++; // stays approved; goes out when its own working day starts
+                continue;
+            }
+            if ($tried++ >= $limit) {
+                break;
+            }
             $workflow = $rec->sequence_step > 1 ? 'follow_ups' : 'outreach';
             if ($this->workflows->isPaused($workflow)) {
                 $out['not_sent'][] = "#{$rec->id}: {$workflow} paused";
@@ -237,6 +242,8 @@ class SequenceEngine
                 $out['not_sent'][] = "#{$rec->id}: {$res['reason']}";
             }
         }
+        $out['outside_window'] = $due->isNotEmpty() && $outside === $due->count();
+        $out['waiting_for_local_hours'] = $outside;
 
         return $out;
     }
@@ -261,10 +268,10 @@ class SequenceEngine
 
             return ['sent' => false, 'reason' => 'deferred (24h spacing)', 'message_id' => null];
         }
-        if ($approvedByHuman && !$this->inSendingWindow()) {
-            $rec->update(['status' => 'approved', 'scheduled_at' => $this->nextSendTime()]);
+        if ($approvedByHuman && !$this->inSendingWindow(null, $rec->lead)) {
+            $rec->update(['status' => 'approved', 'scheduled_at' => $this->nextSendTime(null, $rec->lead)]);
 
-            return ['sent' => false, 'reason' => 'approved — scheduled for the next sending window (' . $rec->fresh()->scheduled_at?->timezone(config('leadpilot.timezone'))->format('D H:i') . ')', 'message_id' => null];
+            return ['sent' => false, 'reason' => 'approved — scheduled for the prospect\'s next working hours (' . $rec->fresh()->scheduled_at?->timezone(config('leadpilot.timezone'))->format('D H:i') . ' your time)', 'message_id' => null];
         }
 
         app()->instance('leadpilot.sequence_dispatch', true);
@@ -283,23 +290,25 @@ class SequenceEngine
         return ['sent' => $ok, 'reason' => $ok ? null : ($rec->error_message ?: $rec->status), 'message_id' => $rec->rfc_message_id];
     }
 
-    public function inSendingWindow(?Carbon $at = null): bool
+    /** Working hours (config sending_hours, e.g. 9-17) on a working day, on the PROSPECT's clock when a lead is given. */
+    public function inSendingWindow(?Carbon $at = null, ?Lead $lead = null): bool
     {
-        $t = ($at ?? now())->copy()->timezone(config('leadpilot.timezone'));
+        [$zone, $days] = LocalTime::forLead($lead);
+        $t = ($at ?? now())->copy()->timezone($zone);
         [$from, $to] = config('leadpilot.autopilot.sending_hours', [9, 17]);
 
-        return in_array($t->dayOfWeekIso, config('leadpilot.autopilot.sending_days', [1, 2, 3, 4, 5]), true) && $t->hour >= $from && $t->hour < $to;
+        return in_array($t->dayOfWeekIso, $days, true) && $t->hour >= $from && $t->hour < $to;
     }
 
-    public function nextSendTime(): Carbon
+    public function nextSendTime(?Carbon $from = null, ?Lead $lead = null): Carbon
     {
-        $tz = config('leadpilot.timezone');
-        [$from] = config('leadpilot.autopilot.sending_hours', [9, 17]);
-        $t = now()->timezone($tz);
-        for ($i = 0; $i < 14 * 24 && !$this->inSendingWindow($t); $i++) {
+        [$zone] = LocalTime::forLead($lead);
+        [$start] = config('leadpilot.autopilot.sending_hours', [9, 17]);
+        $t = ($from ?? now())->copy()->timezone($zone);
+        for ($i = 0; $i < 14 * 24 && !$this->inSendingWindow($t, $lead); $i++) {
             $t = $t->copy()->addHour()->minute(0);
-            if ($t->hour < $from) {
-                $t->hour($from);
+            if ($t->hour < $start) {
+                $t->hour($start);
             }
         }
         // small jitter so messages don't leave in a burst
