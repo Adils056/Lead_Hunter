@@ -37,7 +37,7 @@ class AutoMarketService
                 $icp->fill([
                     'name' => "Auto · {$seg['label']} · all approved countries",
                     'description' => 'Created by Auto Market. Edit or switch off freely; it will not be re-created or overwritten.',
-                    'is_active' => true, 'countries' => $approved, 'cities' => [], 'niches' => (array) ($seg['niches'] ?? []),
+                    'is_active' => true, 'countries' => $approved, 'cities' => [], 'niches' => (array) ($seg['niches'] ?? []), 'keywords' => (array) ($seg['keywords'] ?? []),
                     'business_types' => [$seg['type'] ?? 'b2b'], 'target_services' => (array) ($seg['services'] ?? []),
                     'sources' => (array) ($seg['sources'] ?? []), 'website_requirement' => 'any', 'channels' => ['email'],
                     'min_lead_score' => 50, 'max_results_per_run' => 25, 'exclude_existing_customers' => true, 'objective' => 'auto_market',

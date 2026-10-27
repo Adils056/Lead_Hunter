@@ -28,6 +28,18 @@ class HiringSignalsTest extends TestCase
         $this->assertNull(HnWhoIsHiringAdapter::parsePost('Foo | Rust engineer | Berlin, Germany | ONSITE')['country'], 'unapproved country is not guessed');
     }
 
+    public function test_hn_website_is_the_business_mail_domain_or_a_link_with_the_company_name_never_a_video_or_article(): void
+    {
+        $video = HnWhoIsHiringAdapter::parsePost('Charge Robotics | Software engineer | Oakland, CA | ONSITE | <a href="https://youtu.be/abc">demo</a> email max@chargerobotics.com');
+        $this->assertSame('https://chargerobotics.com', $video['website']);
+
+        $article = HnWhoIsHiringAdapter::parsePost('Paramark | Full stack engineer | San Francisco | <a href="https://www.mercurynews.com/2026/paramark">press</a> <a href="https://jobs.gem.com/paramark">apply</a>');
+        $this->assertNull($article['website']);
+
+        $named = HnWhoIsHiringAdapter::parsePost('Curai | Backend engineer | Remote (US) | <a href="https://github.com/curai">code</a> <a href="https://www.curaihealth.com/careers">careers</a>');
+        $this->assertSame('https://curaihealth.com', $named['website']);
+    }
+
     public function test_hn_adapter_ingests_relevant_posts_and_skips_agency_refusals_and_other_countries(): void
     {
         Http::fake([

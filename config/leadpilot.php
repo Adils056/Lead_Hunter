@@ -356,7 +356,7 @@ return [
             'tenders' => ['label' => 'Public tenders', 'niches' => [], 'services' => ['web_dev', 'custom_software'], 'type' => 'government', 'countries' => ['United Kingdom']],
             // One profile across all approved countries: companies announcing developer hiring (HN "Who is hiring",
             // and job boards found on audited websites). Hiring is the strongest free buying signal we can see.
-            'hiring' => ['label' => 'Companies hiring developers', 'niches' => ['php', 'laravel', 'web developer', 'full stack'], 'services' => ['laravel_php', 'custom_software'],
+            'hiring' => ['label' => 'Companies hiring developers', 'keywords' => ['php', 'laravel', 'web developer', 'full stack'], 'services' => ['laravel_php', 'custom_software'],
                 'type' => 'b2b', 'global' => true, 'sources' => ['hn_hiring', 'ats_watchlist']],
         ],
     ],
