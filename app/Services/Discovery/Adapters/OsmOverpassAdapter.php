@@ -104,6 +104,10 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
         $all = array_values(array_unique(array_filter($env ?: [
             config('leadpilot.osm.overpass_url'), // overpass-api.de answers every time on this PC; private.coffee times out, so it goes last
             'https://overpass-api.de/api/interpreter',
+            // more public instances: a host whose IP one server refuses (seen live: overpass-api.de "could not connect")
+            // still reaches the others; whichever answered last goes first (see the ok-key sort below)
+            'https://overpass.kumi.systems/api/interpreter',
+            'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
             'https://overpass.private.coffee/api/interpreter',
         ])));
         if ($includeDown) {
@@ -260,16 +264,17 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
     public function buildQuery(int|array $area, array $filters, int $max, bool $contactable = false): string
     {
         $where = is_array($area) ? '(' . implode(',', array_map(fn ($v) => sprintf('%.6f', (float) $v), $area)) . ')' : '(area.a)';
-        if ($contactable) {
-            // only places with a website or an e-mail tag: most map entries carry neither and can never be e-mailed
-            $where = '[~"^(website|contact:website|url|email|contact:email)$"~"."]' . $where;
-        }
+        // Only places with a website or an e-mail tag when asked (most map entries carry neither and can never be
+        // e-mailed). One clause per tag: a key-existence filter uses the server's index, a key regex scans every tag.
+        $contactTags = $contactable ? ['["website"]', '["contact:website"]', '["email"]', '["contact:email"]'] : [''];
         $parts = [];
         foreach ($filters as [$k, $v]) {
             $v = str_replace(['"', '\\'], '', $v);
-            $parts[] = $k === 'name~'
-                ? "  nwr[\"name\"~\"{$v}\",i]{$where};"
-                : "  nwr[\"{$k}\"=\"{$v}\"][\"name\"]{$where};";
+            foreach ($contactTags as $tag) {
+                $parts[] = $k === 'name~'
+                    ? "  nwr[\"name\"~\"{$v}\",i]{$tag}{$where};"
+                    : "  nwr[\"{$k}\"=\"{$v}\"][\"name\"]{$tag}{$where};";
+            }
         }
         $head = is_array($area) ? '' : "area({$area})->.a;\n";
 
