@@ -140,6 +140,20 @@ class AutoMarketTest extends TestCase
         $this->assertLessThan(\App\Support\ScoreBands::qualified(), $notAudited, 'no evidence, no lift');
     }
 
+    public function test_a_cms_on_a_local_business_site_is_not_scored_as_a_software_need(): void
+    {
+        $icp = IcpProfile::create(['name' => 'Lahore clinics', 'is_active' => true, 'countries' => ['Pakistan'], 'cities' => ['Lahore'], 'niches' => ['dentist'],
+            'business_types' => ['local_business'], 'target_services' => ['web_redesign']]);
+        $c = \App\Models\Company::create(['name' => 'WP Dental', 'website' => 'https://wpdental.pk', 'country' => 'Pakistan', 'city' => 'Lahore', 'industry' => 'Dentist',
+            'tech_stack' => ['WordPress', 'jQuery'], 'website_opportunity_score' => 60, 'website_audited_at' => now()]);
+        $l = \App\Models\Lead::create(['company_id' => $c->id, 'icp_profile_id' => $icp->id, 'first_name' => 'Info', 'email' => 'info@wpdental.pk',
+            'email_verification_status' => 'verified', 'contact_status' => 'generic_inbox', 'country' => 'Pakistan', 'source_name' => 'OpenStreetMap (Overpass)']);
+
+        $scores = app(\App\Services\LeadScoringService::class)->evaluateLead($l)->breakdown['scores'];
+
+        $this->assertNull($scores['software_need'], 'WordPress on a dental site is not a request for software');
+    }
+
     public function test_public_sector_bodies_are_never_cold_emailed(): void
     {
         foreach (['bidwill-p.school@det.nsw.edu.au', 'info@council.gov.uk', 'a@moh.gov.ae', 'x@trust.nhs.uk', 'office@school.sch.uk', 'dean@uni.ac.uk', 'https://www.punjab.gov.pk', 'info@nyc.gov'] as $v) {
