@@ -44,6 +44,7 @@ class AutopilotRunner
 
         $step = function (string $name, callable $fn) use (&$out) {
             $s = microtime(true);
+            app(HealthService::class)->beat('autopilot_step', ['step' => $name]); // shows where a killed cycle stopped
             try {
                 $out['steps'][$name] = ['ok' => true, 'result' => $fn(), 'ms' => (int) ((microtime(true) - $s) * 1000)];
             } catch (\Throwable $e) {
@@ -65,6 +66,21 @@ class AutopilotRunner
                 return $wf->isPaused('reply_sync') || !$policy->isAutomatic('reply.classify') ? 'paused' : $svc->sync();
             });
 
+            // Sending first: it is quick and it is what the cycle is for. Shared hosts kill long cycles; a cycle cut off
+            // during discovery or audits must not also cost the day's e-mails. New leads go out on the next cycle.
+            $step('outreach', function () use ($cfg, $dryRun) {
+                if ($dryRun) {
+                    return 'dry run: no drafts or sends';
+                }
+                $engine = app(SequenceEngine::class);
+
+                return [
+                    'first_touch' => $engine->planFirstTouches((int) $cfg['drafts_per_cycle']),
+                    'follow_ups' => $engine->planFollowUps(),
+                    'dispatch' => $engine->dispatchDue(),
+                ];
+            });
+
             $step('discovery', function () use ($wf, $policy, $cfg, $dryRun) {
                 if ($wf->isPaused('discovery') || !$policy->isAutomatic('discovery.free')) {
                     return 'paused or not automatic';
@@ -77,7 +93,12 @@ class AutopilotRunner
                         $done[] = "Auto Market: {$sync['created']} target profile(s) created";
                     }
                 }
+                $deadline = microtime(true) + (int) ($cfg['discovery_seconds'] ?? 240);
                 foreach (app(SearchAllocator::class)->pick((int) $cfg['discovery_runs_per_cycle']) as $arm) {
+                    if (microtime(true) > $deadline) {
+                        $done[] = 'discovery time budget reached — next search runs in the next cycle';
+                        break;
+                    }
                     if ($dryRun) {
                         $done[] = "would run {$arm['slug']} for ICP #{$arm['icp']->id}";
                         continue;
@@ -183,18 +204,6 @@ class AutopilotRunner
                 return "{$n} lead(s) scored, {$ranked} re-ranked on the Win Ladder";
             });
 
-            $step('outreach', function () use ($cfg, $dryRun) {
-                if ($dryRun) {
-                    return 'dry run: no drafts or sends';
-                }
-                $engine = app(SequenceEngine::class);
-
-                return [
-                    'first_touch' => $engine->planFirstTouches((int) $cfg['drafts_per_cycle']),
-                    'follow_ups' => $engine->planFollowUps(),
-                    'dispatch' => $engine->dispatchDue(),
-                ];
-            });
         } finally {
             $out['ms'] = (int) ((microtime(true) - $t0) * 1000);
             app(HealthService::class)->beat('autopilot', ['ok' => collect($out['steps'])->every(fn ($s) => $s['ok']), 'ms' => $out['ms'], 'at' => now()->toIso8601String()]);

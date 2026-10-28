@@ -322,6 +322,7 @@ return [
         // over is picked up 15 minutes later. lock_seconds frees the cycle lock if the host killed a run.
         'audit_seconds' => (int) env('LEADPILOT_AUDIT_SECONDS', 150),
         'verify_seconds' => (int) env('LEADPILOT_VERIFY_SECONDS', 90),
+        'discovery_seconds' => (int) env('LEADPILOT_DISCOVERY_SECONDS', 240),
         'lock_seconds' => (int) env('LEADPILOT_CYCLE_LOCK_SECONDS', 900),
         'drafts_per_cycle' => 10,
         'max_first_touch_per_day' => (int) env('LEADPILOT_MAX_FIRST_TOUCH_PER_DAY', 25),
@@ -394,6 +395,9 @@ return [
         'overpass_mirrors' => env('OSM_OVERPASS_MIRRORS', ''),
         'http_timeout' => (int) env('OSM_HTTP_TIMEOUT', 120), // seconds; the public server often needs 30-60 s per city query
         'retry_pause_seconds' => (int) env('OSM_RETRY_PAUSE', 5),
+        // One search stops trying more mirrors / retries / cities after this many seconds (rest: next cycle), so a slow
+        // public Overpass server cannot hold the autopilot cycle until the host kills it.
+        'run_seconds' => (int) env('OSM_RUN_SECONDS', 150),
         'nominatim_url' => env('OSM_NOMINATIM_URL', 'https://nominatim.openstreetmap.org/search'),
         'contact_email' => env('OSM_CONTACT_EMAIL', env('MAIL_FROM_ADDRESS')), // required by Nominatim policy
     ],

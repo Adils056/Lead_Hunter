@@ -133,10 +133,25 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
      * a 504 followed by a 200 on the same query is normal) after a short pause. A connection failure or
      * timeout marks the endpoint down for 20 minutes and is re-thrown so the caller can record it.
      */
+    /** microtime() after which this search stops trying more mirrors, retries and places (set per run). */
+    protected ?float $deadline = null;
+
+    protected function secondsLeft(): ?int
+    {
+        return $this->deadline === null ? null : (int) floor($this->deadline - microtime(true));
+    }
+
     protected function overpass(string $ep, string $query, int $retries = 2, ?int $timeout = null): ?\Illuminate\Http\Client\Response
     {
         $r = null;
         for ($attempt = 0; $attempt <= $retries; $attempt++) {
+            $left = $this->secondsLeft();
+            if ($left !== null && $left < 15) {
+                break; // out of time for this run: what is left is searched next cycle
+            }
+            if ($left !== null) {
+                $timeout = min($timeout ?: (int) config('leadpilot.osm.http_timeout', 120), $left);
+            }
             if ($attempt > 0) {
                 sleep((int) config('leadpilot.osm.retry_pause_seconds', 5) * $attempt);
             }
@@ -272,7 +287,12 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
             return;
         }
         $processed = 0;
+        $this->deadline = microtime(true) + (int) config('leadpilot.osm.run_seconds', 150);
         foreach ($places as $place) {
+            if ($this->secondsLeft() < 15) {
+                $result->addError('OSM time budget reached; the remaining cities are searched next time.');
+                break;
+            }
             $area = $this->resolveArea($place);
             if (!$area) {
                 $result->addError("Could not resolve area for \"{$place}\" via Nominatim.");
@@ -280,6 +300,9 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
             }
             $json = null;
             foreach ($this->endpoints() as $ep) {
+                if ($this->secondsLeft() < 15) {
+                    break;
+                }
                 try {
                     $r = $this->overpass($ep, $this->buildQuery($area, $filters, $limit * 3, ($options['website_requirement'] ?? 'any') === 'contactable'));
                     if ($r && $r->successful()) {

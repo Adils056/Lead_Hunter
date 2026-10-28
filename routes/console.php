@@ -389,7 +389,8 @@ Artisan::command('leadpilot:status', function (\App\Services\Outreach\SequenceEn
         $detail = 'last run ' . $ago($hb?->beat_at) . ($c === 'autopilot' && $hb && !$stepsOk ? ' — a step failed: php artisan leadpilot:autopilot' : '');
         $started = $c === 'autopilot' ? $beat('autopilot_started') : null;
         if ($started && (!$hb || $started->beat_at->gt($hb->beat_at))) {
-            $detail .= ' · a cycle started ' . $ago($started->beat_at) . ' has not finished'
+            $at = $beat('autopilot_step')?->meta['step'] ?? null;
+            $detail .= ' · a cycle started ' . $ago($started->beat_at) . ' has not finished' . ($at ? " (last step: {$at})" : '')
                 . ($started->beat_at->lt(now()->subMinutes(20)) ? ' (killed by the host?) — php artisan leadpilot:autopilot --unlock' : '');
         }
         $add($fresh && $stepsOk ? 'PASS' : 'FAIL', $label, $detail);

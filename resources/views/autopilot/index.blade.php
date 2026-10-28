@@ -70,10 +70,15 @@
     <div class="col-lg-5">
         <div class="card-lp p-3 mb-4">
             <h6 class="fw-bold mb-2">System</h6>
-            @foreach(['scheduler' => 'Scheduler', 'queue_worker' => 'Queue worker', 'autopilot' => 'Last autopilot cycle', 'reply_sync' => 'Reply sync'] as $c => $l)
+            @foreach(['scheduler' => 'Scheduler', 'queue_worker' => 'Queue worker', 'autopilot' => 'Last finished autopilot cycle', 'reply_sync' => 'Reply sync'] as $c => $l)
                 <div class="d-flex justify-content-between small py-1 border-bottom"><span>{{ $l }}</span>
                     <span class="{{ $hbOk($c) ? 'text-success' : 'text-danger' }}">{{ isset($heartbeats[$c]) ? $heartbeats[$c]->beat_at->diffForHumans() : 'never' }}</span></div>
             @endforeach
+            @php $cycleStart = $heartbeats['autopilot_started'] ?? null; $cycleEnd = $heartbeats['autopilot'] ?? null; @endphp
+            @if($cycleStart && (!$cycleEnd || $cycleStart->beat_at->gt($cycleEnd->beat_at)))
+                <div class="d-flex justify-content-between small py-1 border-bottom"><span>Current cycle</span>
+                    <span class="{{ $cycleStart->beat_at->gt(now()->subMinutes(20)) ? 'text-primary' : 'text-danger' }}">started {{ $cycleStart->beat_at->diffForHumans() }} · step: {{ $heartbeats['autopilot_step']->meta['step'] ?? '—' }}</span></div>
+            @endif
         </div>
         <div class="card-lp p-3 mb-4">
             <h6 class="fw-bold mb-2">Workflows</h6>
