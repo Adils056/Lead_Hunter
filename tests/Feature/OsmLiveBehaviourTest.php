@@ -85,7 +85,10 @@ class OsmLiveBehaviourTest extends TestCase
         $osm = new OsmOverpassAdapter();
 
         $q = $osm->buildQuery([1, 2, 3, 4], $osm->tagFilters(['software']), 10, true);
-        $this->assertStringContainsString('[~"^(website|contact:website|url|email|contact:email)$"~"."](', $q);
+        foreach (['website', 'contact:website', 'email', 'contact:email'] as $tag) {
+            $this->assertStringContainsString("[\"name\"][\"{$tag}\"](1.000000,2.000000,3.000000,4.000000);", $q, 'indexed key filter, not a key regex');
+        }
+        $this->assertStringNotContainsString('[~', $q);
         $this->assertStringNotContainsString('contact:email', $osm->buildQuery([1, 2, 3, 4], $osm->tagFilters(['software']), 10));
 
         $r = $osm->discover(['places' => ['Rawalpindi, Pakistan'], 'niches' => ['software'], 'country' => 'Pakistan', 'limit' => 10, 'website_requirement' => 'contactable']);
