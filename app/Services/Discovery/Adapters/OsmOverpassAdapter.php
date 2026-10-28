@@ -242,9 +242,13 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
     }
 
     /** @param int|array $area Overpass area id, or bounding box [south, west, north, east] */
-    public function buildQuery(int|array $area, array $filters, int $max): string
+    public function buildQuery(int|array $area, array $filters, int $max, bool $contactable = false): string
     {
         $where = is_array($area) ? '(' . implode(',', array_map(fn ($v) => sprintf('%.6f', (float) $v), $area)) . ')' : '(area.a)';
+        if ($contactable) {
+            // only places with a website or an e-mail tag: most map entries carry neither and can never be e-mailed
+            $where = '[~"^(website|contact:website|url|email|contact:email)$"~"."]' . $where;
+        }
         $parts = [];
         foreach ($filters as [$k, $v]) {
             $v = str_replace(['"', '\\'], '', $v);
@@ -277,7 +281,7 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
             $json = null;
             foreach ($this->endpoints() as $ep) {
                 try {
-                    $r = $this->overpass($ep, $this->buildQuery($area, $filters, $limit * 3));
+                    $r = $this->overpass($ep, $this->buildQuery($area, $filters, $limit * 3, ($options['website_requirement'] ?? 'any') === 'contactable'));
                     if ($r && $r->successful()) {
                         $json = $r->json();
                         break;
@@ -310,12 +314,13 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
                 if ($website && !preg_match('#^https?://#i', $website)) {
                     $website = 'https://' . ltrim($website, '/');
                 }
-                if (($options['website_requirement'] ?? 'any') === 'has_website' && !$website) {
+                $email = $t['email'] ?? $t['contact:email'] ?? null;
+                $req = $options['website_requirement'] ?? 'any';
+                if (($req === 'has_website' && !$website) || ($req === 'contactable' && !$website && !$email)) {
                     $result->excludedCount++;
                     continue;
                 }
                 $phone = $t['phone'] ?? $t['contact:phone'] ?? $t['contact:mobile'] ?? null;
-                $email = $t['email'] ?? $t['contact:email'] ?? null;
                 $osmUrl = "https://www.openstreetmap.org/{$el['type']}/{$el['id']}";
                 $category = $t['amenity'] ?? $t['shop'] ?? $t['office'] ?? $t['healthcare'] ?? $t['tourism'] ?? $t['leisure'] ?? $t['craft'] ?? null;
                 $addr = trim(implode(', ', array_filter([trim(($t['addr:housenumber'] ?? '') . ' ' . ($t['addr:street'] ?? '')), $t['addr:city'] ?? null, $t['addr:postcode'] ?? null])), ', ');
