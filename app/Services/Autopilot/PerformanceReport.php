@@ -18,6 +18,9 @@ class PerformanceReport
 {
     public const POSITIVE = ['interested', 'request_info', 'meeting_request', 'positive'];
 
+    /** Below this many e-mailed prospects a segment's reply rate is noise, and the page says so. */
+    public const MIN_SAMPLE = 20;
+
     public function build(int $days = 90): array
     {
         $from = now()->subDays($days);
@@ -54,6 +57,21 @@ class PerformanceReport
             usort($rows, fn ($a, $b) => [$b['positive_replies'], $b['qualified']] <=> [$a['positive_replies'], $a['qualified']]);
             $out['by'][$name] = $rows;
         }
+
+        // Winning segments: of the prospects e-mailed in the window, who answered at all and who answered with interest.
+        $contacted = Lead::with('icpProfile')->whereIn('id', $sentLeadIds)->get();
+        $answered = $replies->reject(fn ($r) => ($r->category ?? $r->classification) === 'out_of_office')->pluck('lead_id')->unique();
+        $out['winning'] = $contacted->groupBy(fn ($l) => optional($l->icpProfile)->name ?? '—')->map(function ($g, $key) use ($answered, $positiveLeadIds) {
+            $ids = $g->pluck('id');
+            $n = $g->count();
+            $rep = $ids->intersect($answered)->count();
+            $pos = $ids->intersect($positiveLeadIds)->count();
+
+            return ['key' => (string) $key, 'contacted' => $n, 'replied' => $rep, 'positive' => $pos,
+                'reply_rate' => $n ? round(100 * $rep / $n, 1) : 0, 'positive_rate' => $n ? round(100 * $pos / $n, 1) : 0,
+                'enough_data' => $n >= self::MIN_SAMPLE];
+        })->sortBy([['positive_rate', 'desc'], ['reply_rate', 'desc'], ['contacted', 'desc']])->values()->all();
+        $out['min_sample'] = self::MIN_SAMPLE;
 
         $steps = CampaignRecipient::whereNotNull('sent_at')->where('sent_at', '>=', $from)->get(['id', 'lead_id', 'sequence_step', 'sent_at']);
         $out['by_step'] = $steps->groupBy('sequence_step')->map(function ($g, $step) use ($replies) {

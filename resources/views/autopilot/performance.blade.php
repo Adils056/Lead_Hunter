@@ -9,6 +9,28 @@
     @foreach($r['totals'] as $k => $v)<div class="col-6 col-md-2"><div class="card-lp p-3"><div class="small text-muted">{{ ucwords(str_replace('_',' ',$k)) }}</div><div class="fs-4 fw-bold">{{ $v }}</div></div></div>@endforeach
 </div>
 <div class="card-lp p-3 mb-4">
+    <h6 class="fw-bold mb-1"><i class="bi bi-trophy-fill text-warning me-1"></i>Winning segments</h6>
+    <p class="small text-muted mb-2">Of the prospects e-mailed in this period: who replied, and who replied with interest. Segments that reply get more searches (and a "lookalike" profile); segments that stay silent for two weeks get fewer. Fewer than {{ $r['min_sample'] }} e-mails is too early to judge.</p>
+    <table class="table table-sm small align-middle mb-0">
+        <thead><tr class="text-muted"><th>Segment</th><th>E-mailed</th><th>Replied</th><th>Interested</th><th style="min-width: 160px;">Reply rate</th><th>Interest rate</th></tr></thead>
+        <tbody>
+        @forelse($r['winning'] as $w)
+            <tr>
+                <td>{{ $w['key'] }} @unless($w['enough_data'])<span class="badge bg-light text-muted border ms-1">too early</span>@endunless</td>
+                <td>{{ $w['contacted'] }}</td><td>{{ $w['replied'] }}</td><td>{{ $w['positive'] }}</td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height: 6px;"><div class="progress-bar {{ $w['positive'] ? 'bg-success' : 'bg-secondary' }}" style="width: {{ min(100, $w['reply_rate'] * 4) }}%"></div></div>
+                        <span>{{ $w['reply_rate'] }}%</span>
+                    </div>
+                </td>
+                <td class="{{ $w['positive'] ? 'fw-bold text-success' : '' }}">{{ $w['positive_rate'] }}%</td>
+            </tr>
+        @empty <tr><td colspan="6" class="text-muted">No e-mails sent in this period yet.</td></tr> @endforelse
+        </tbody>
+    </table>
+</div>
+<div class="card-lp p-3 mb-4">
     <h6 class="fw-bold">Cost (actual vs estimated)</h6>
     <div class="small mb-2">Actual: <strong>${{ $r['costs']['actual_usd'] }}</strong> · Estimated: <strong>${{ $r['costs']['estimated_usd'] }}</strong> <span class="text-muted">(estimates come from list prices; actual = provider-reported)</span></div>
     <div class="d-flex flex-wrap gap-2 small">

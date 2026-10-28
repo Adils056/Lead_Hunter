@@ -84,7 +84,9 @@ class AutoMarketService
             }
         }
 
-        $deactivated = IcpProfile::whereNotNull('auto_key')->whereNotIn('auto_key', $wanted)->where('is_active', true)->update(['is_active' => false]);
+        // lookalike profiles come from real replies, not from this list: never switched off here
+        $deactivated = IcpProfile::whereNotNull('auto_key')->where('auto_key', 'not like', 'lookalike:%')->whereNotIn('auto_key', $wanted)
+            ->where('is_active', true)->update(['is_active' => false]);
 
         return [
             'created' => $created,
