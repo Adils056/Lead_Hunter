@@ -59,6 +59,13 @@ class OverturePlacesAdapterTest extends TestCase
         $this->assertCount(2, $a->boxes, 'one lookup by the skipped search, one by the download');
     }
 
+    public function test_duckdb_is_capped_to_a_few_threads_for_shared_hosting(): void
+    {
+        $this->assertSame("SET threads=2;\nSET memory_limit='1GB';\n", (new OverturePlacesAdapter())->limits());
+        config(['leadpilot.sources.overture_places.threads' => 0, 'leadpilot.sources.overture_places.memory_limit' => '']);
+        $this->assertSame('', (new OverturePlacesAdapter())->limits());
+    }
+
     public function test_not_configured_without_the_duckdb_binary_and_configured_with_it(): void
     {
         config(['leadpilot.sources.overture_places.duckdb_bin' => '/nonexistent/duckdb']);

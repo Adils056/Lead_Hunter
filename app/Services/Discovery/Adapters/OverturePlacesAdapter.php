@@ -416,6 +416,15 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
         return str_replace(["\\", "'"], ['/', "''"], $path);
     }
 
+    /** Thread / memory caps prepended to every DuckDB script (shared hosts limit threads per account). */
+    public function limits(): string
+    {
+        $threads = (int) config('leadpilot.sources.overture_places.threads', 2);
+        $memory = preg_replace('/[^0-9A-Za-z.]/', '', (string) config('leadpilot.sources.overture_places.memory_limit', ''));
+
+        return ($threads > 0 ? "SET threads={$threads};\n" : '') . ($memory !== '' ? "SET memory_limit='{$memory}';\n" : '');
+    }
+
     /**
      * Run SQL through the DuckDB CLI (-json). The statements go in a temp .sql file (no shell quoting), the LAST
      * result set is returned as rows. A non-zero exit raises with DuckDB's own message.
@@ -427,7 +436,7 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
         $dir = storage_path('app/overture');
         File::ensureDirectoryExists($dir);
         $file = $dir . '/q_' . Str::random(10) . '.sql';
-        file_put_contents($file, $sql);
+        file_put_contents($file, $this->limits() . $sql);
         try {
             $p = new Process([$this->binary(), '-json', '-f', $file]);
             $p->setTimeout($timeout);
