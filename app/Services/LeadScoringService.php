@@ -74,7 +74,8 @@ class LeadScoringService
             $top = $need->sortByDesc('confidence')->first();
             $f['software_need'] = [$top->confidence / 100, "Active software need: \"{$top->title}\""];
             $evidence[] = $this->ev('software_need', $top);
-        } elseif ($company && !empty($company->tech_stack)) {
+        } elseif ($company && !empty($company->tech_stack) && !$localOnly) {
+            // a local shop running WordPress is not a software need; for B2B a known stack is half a signal
             $f['software_need'] = [0.5, 'Known technology stack: ' . implode(', ', array_slice((array) $company->tech_stack, 0, 5))];
         } elseif ($localOnly || $intent) {
             $f['software_need'] = [null, null];
