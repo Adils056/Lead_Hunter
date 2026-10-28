@@ -149,6 +149,24 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
         });
     }
 
+    /**
+     * Download one city's places for the current release ahead of any search (no-op when already there).
+     *
+     * @return array{release: string, path: string, seconds: float, bytes: int}
+     */
+    public function warm(string $place): array
+    {
+        $box = $this->resolveBox($place);
+        if (!$box) {
+            throw new \RuntimeException("Could not resolve a bounding box for \"{$place}\" via Nominatim.");
+        }
+        $release = $this->release();
+        $t = microtime(true);
+        $path = $this->ensureExtract($box, $release);
+
+        return ['release' => $release, 'path' => $path, 'seconds' => round(microtime(true) - $t, 1), 'bytes' => is_file($path) ? (int) filesize($path) : 0];
+    }
+
     /** City -> bounding box [south, west, north, east] via the shared (cached, rate-limited) Nominatim lookup. */
     protected function resolveBox(string $place): ?array
     {
@@ -280,6 +298,11 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
                 continue;
             }
             try {
+                if (!config('leadpilot.sources.overture_places.extract_during_search', true) && !is_file($this->extractPath($box, $release))) {
+                    // shared hosts: the minutes-long download runs in leadpilot:overture-warm, never inside a cycle
+                    $result->addError("Overture data for \"{$place}\" (release {$release}) is not downloaded yet; leadpilot:overture-warm fetches it in the background.");
+                    continue;
+                }
                 $path = $this->ensureExtract($box, $release);
             } catch (\Throwable $e) {
                 $result->addError("Overture extract for \"{$place}\" (release {$release}) failed: " . mb_substr($e->getMessage(), 0, 200));

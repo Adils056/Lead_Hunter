@@ -176,6 +176,9 @@ return [
             'min_confidence' => (float) env('OVERTURE_MIN_CONFIDENCE', 0.6), // Overture existence score 0-1 (relative, not calibrated)
             'bbox_padding' => 0.02, // degrees added around the Nominatim bounding box of a city
             'extract_timeout' => (int) env('OVERTURE_EXTRACT_TIMEOUT', 600), // seconds for the one-off city extract (~45 s observed)
+            // false on shared hosting: searches only read cities already downloaded by `leadpilot:overture-warm`
+            // (scheduled daily), so a minutes-long download never runs inside an autopilot cycle
+            'extract_during_search' => (bool) env('OVERTURE_EXTRACT_DURING_SEARCH', true),
         ],
         'google_places' => [
             'api_key' => env('GOOGLE_PLACES_API_KEY'),
