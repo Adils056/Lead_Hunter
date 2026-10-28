@@ -41,6 +41,24 @@ class OverturePlacesAdapterTest extends TestCase
         return $a;
     }
 
+    public function test_searches_can_skip_cities_not_downloaded_yet_and_the_warm_command_downloads_them(): void
+    {
+        $a = $this->fake([['id' => 'x1', 'name' => 'Cafe One', 'category' => 'cafe']]);
+        config(['leadpilot.sources.overture_places.extract_during_search' => false]);
+
+        $r = $a->discover(['places' => ['Lahore, Pakistan'], 'niches' => ['cafe'], 'limit' => 5]);
+        $this->assertStringContainsString('not downloaded yet', implode(' ', $r->errors));
+        $this->assertSame([], $a->sqls, 'no query against a missing extract');
+
+        IcpProfile::create(['name' => 'Lahore cafes', 'is_active' => true, 'countries' => ['Pakistan'], 'cities' => ['Lahore'], 'niches' => ['cafe'],
+            'business_types' => ['local_business'], 'sources' => ['overture_places']]);
+        $dm = app(DiscoveryManager::class);
+        $dm->registerAdapter($a);
+        $this->app->instance(DiscoveryManager::class, $dm); // the command resolves the same manager, with the fake
+        $this->artisan('leadpilot:overture-warm')->expectsOutputToContain('Lahore, Pakistan: ready')->assertExitCode(0);
+        $this->assertCount(2, $a->boxes, 'one lookup by the skipped search, one by the download');
+    }
+
     public function test_not_configured_without_the_duckdb_binary_and_configured_with_it(): void
     {
         config(['leadpilot.sources.overture_places.duckdb_bin' => '/nonexistent/duckdb']);

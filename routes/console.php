@@ -561,3 +561,30 @@ Artisan::command('leadpilot:mail-test {to : Your own email address (must be an a
         return 1;
     }
 })->purpose('Send ONE SMTP test email to your own admin address and report the real provider result');
+
+Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to download (default: every city an active profile searches with Overture)}', function () {
+    $adapter = app(\App\Services\Discovery\DiscoveryManager::class)->getAdapter('overture_places');
+    if (!$adapter || !$adapter->isConfigured()) {
+        $this->warn('Overture is not configured: put the DuckDB CLI on the server and set OVERTURE_DUCKDB_BIN.');
+
+        return 0;
+    }
+    $places = (array) $this->option('city');
+    if (!$places) {
+        foreach (\App\Models\IcpProfile::where('is_active', true)->get() as $icp) {
+            $places = array_merge($places, (array) (app(\App\Services\Hunting\IcpSearchConfigBuilder::class)->build($icp)['overture_places']['places'] ?? []));
+        }
+    }
+    foreach (array_values(array_unique($places)) as $place) {
+        try {
+            $w = $adapter->warm($place);
+            $this->info(sprintf('%s: ready (release %s, %.1f MB, %s s)', $place, $w['release'], $w['bytes'] / 1048576, $w['seconds']));
+        } catch (\Throwable $e) {
+            $this->error("{$place}: " . mb_substr($e->getMessage(), 0, 300));
+        }
+    }
+
+    return 0;
+})->purpose('Download Overture places for the searched cities ahead of time (once per monthly release)');
+
+Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();
