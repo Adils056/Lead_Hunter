@@ -70,6 +70,36 @@ class OsmLiveBehaviourTest extends TestCase
         Http::assertSent(fn (Request $req) => str_contains($req->url(), 'overpass.private.coffee') && str_contains($req['data'] ?? '', '(33.431545,72.893721,33.751545,73.213721)'));
     }
 
+    public function test_email_only_profiles_ask_the_map_for_places_with_a_website_or_email_and_skip_the_rest(): void
+    {
+        Http::fake([
+            'nominatim.openstreetmap.org/*' => Http::response($this->nominatimNodeOnly(), 200),
+            'overpass.private.coffee/*' => Http::response(['elements' => [
+                $this->element(1, 'Has Site', ['website' => 'hassite.test']),
+                $this->element(2, 'Has Mail', ['email' => 'hello@hasmail.test']),
+                $this->element(3, 'Phone Only', ['phone' => '+92 51 111']),
+            ]], 200),
+            '*' => Http::response('', 404),
+        ]);
+        config(['leadpilot.osm.overpass_mirrors' => 'https://overpass.private.coffee/api/interpreter']);
+        $osm = new OsmOverpassAdapter();
+
+        $q = $osm->buildQuery([1, 2, 3, 4], $osm->tagFilters(['software']), 10, true);
+        $this->assertStringContainsString('[~"^(website|contact:website|url|email|contact:email)$"~"."](', $q);
+        $this->assertStringNotContainsString('contact:email', $osm->buildQuery([1, 2, 3, 4], $osm->tagFilters(['software']), 10));
+
+        $r = $osm->discover(['places' => ['Rawalpindi, Pakistan'], 'niches' => ['software'], 'country' => 'Pakistan', 'limit' => 10, 'website_requirement' => 'contactable']);
+        $this->assertEqualsCanonicalizing(['Has Site', 'Has Mail'], Company::pluck('name')->all());
+        $this->assertSame(1, $r->excludedCount);
+
+        $icp = IcpProfile::create(['name' => 'Mail only', 'is_active' => true, 'countries' => ['Pakistan'], 'cities' => ['Rawalpindi'], 'niches' => ['software'],
+            'channels' => ['email'], 'website_requirement' => 'any', 'sources' => ['osm_overpass', 'overture_places', 'google_places']]);
+        $cfg = app(\App\Services\Hunting\IcpSearchConfigBuilder::class)->build($icp);
+        $this->assertSame(['contactable', 'contactable', 'has_website'], [$cfg['osm_overpass']['website_requirement'], $cfg['overture_places']['website_requirement'], $cfg['google_places']['website_requirement']]);
+        $icp->update(['channels' => ['email', 'phone']]);
+        $this->assertSame('any', app(\App\Services\Hunting\IcpSearchConfigBuilder::class)->build($icp)['osm_overpass']['website_requirement'], 'phone outreach still wants phone-only places');
+    }
+
     public function test_overpass_5xx_is_retried_and_timed_out_mirror_is_skipped_for_the_next_place(): void
     {
         Http::fake([

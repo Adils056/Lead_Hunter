@@ -36,13 +36,19 @@ class IcpSearchConfigBuilder
         $keywords = $icp->list('keywords');
         $niches = $icp->list('niches') ?: $icp->list('industries');
         $out = [];
+        // A profile that only e-mails has no use for a business it cannot reach by e-mail: ask the map sources for
+        // places with a website (the audit finds the inbox there) or a published e-mail, not every name on the map.
+        $req = $icp->website_requirement ?: 'any';
+        if ($req === 'any' && $icp->list('channels') === ['email']) {
+            $req = 'contactable';
+        }
 
         foreach ($sources as $slug) {
             $out[$slug] = match ($slug) {
                 'google_places' => [
                     'queries' => $this->placesQueries($niches, $icp->list('cities'), $icp->list('regions'), $icp->list('countries')),
                     'limit' => $limit,
-                    'website_requirement' => $icp->website_requirement === 'weak_website' ? 'has_website' : $icp->website_requirement,
+                    'website_requirement' => in_array($req, ['weak_website', 'contactable'], true) ? 'has_website' : $req, // Places returns no e-mail
                     'min_rating' => $icp->min_google_rating ? $icp->min_google_rating / 10 : null,
                     'min_reviews' => $icp->min_review_count,
                     'industry' => $icp->list('industries')[0] ?? null,
@@ -52,7 +58,7 @@ class IcpSearchConfigBuilder
                     'niches' => $niches ?: $icp->list('industries'),
                     'country' => $icp->list('countries')[0] ?? null,
                     'limit' => $limit,
-                    'website_requirement' => in_array($icp->website_requirement, ['has_website', 'weak_website'], true) ? 'has_website' : 'any',
+                    'website_requirement' => match ($req) { 'has_website', 'weak_website' => 'has_website', 'contactable' => 'contactable', default => 'any' },
                     'industry' => $icp->list('industries')[0] ?? null,
                 ],
                 'uk_find_a_tender', 'uk_contracts_finder' => [

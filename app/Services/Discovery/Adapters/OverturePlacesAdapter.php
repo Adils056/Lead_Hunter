@@ -239,6 +239,7 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
         $web = match ($req) {
             'has_website', 'weak_website' => ' AND website IS NOT NULL',
             'no_website' => ' AND website IS NULL',
+            'contactable' => ' AND (website IS NOT NULL OR email IS NOT NULL)',
             default => '',
         };
         $sql = 'SELECT id, name, category, hierarchy, round(confidence * 100) AS confidence, website, email, phone, social, address, locality, region, country, postcode, operating_status, lon, lat, dataset, license '
