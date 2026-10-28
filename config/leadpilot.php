@@ -179,6 +179,10 @@ return [
             // false on shared hosting: searches only read cities already downloaded by `leadpilot:overture-warm`
             // (scheduled daily), so a minutes-long download never runs inside an autopilot cycle
             'extract_during_search' => (bool) env('OVERTURE_EXTRACT_DURING_SEARCH', true),
+            // DuckDB starts one thread per CPU core; shared hosts cap threads per account and fail with
+            // "Resource temporarily unavailable". Keep it small there (0 = DuckDB's own default).
+            'threads' => (int) env('OVERTURE_DUCKDB_THREADS', 2),
+            'memory_limit' => env('OVERTURE_DUCKDB_MEMORY', '1GB'),
         ],
         'google_places' => [
             'api_key' => env('GOOGLE_PLACES_API_KEY'),
