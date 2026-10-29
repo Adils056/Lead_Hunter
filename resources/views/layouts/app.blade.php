@@ -423,6 +423,10 @@
                 <i class="bi bi-file-earmark-text"></i>
                 <span>Email Templates</span>
             </a>
+            <a href="{{ route('whatsapp-templates.index') }}" class="nav-link-custom {{ request()->routeIs('whatsapp-templates.*') ? 'active' : '' }}">
+                <i class="bi bi-whatsapp"></i>
+                <span>WhatsApp Templates</span>
+            </a>
             <a href="{{ route('analytics.index') }}" class="nav-link-custom {{ request()->routeIs('analytics.*') ? 'active' : '' }}">
                 <i class="bi bi-graph-up-arrow"></i>
                 <span>Analytics & Reports</span>

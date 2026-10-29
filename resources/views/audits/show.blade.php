@@ -28,7 +28,11 @@
                 <div class="d-flex gap-2 py-2 border-bottom small">
                     <i class="bi {{ $icon[$c['status']] ?? '' }}"></i>
                     <div><strong>{{ $c['label'] }}</strong> @if(isset($c['value']))<span class="text-muted">— {{ $c['value'] }}</span>@endif
-                        <div class="text-muted">{{ $c['evidence'] }}</div></div>
+                        <div class="text-muted">{{ $c['evidence'] }}</div>
+                        @if(in_array($c['status'], ['fail', 'warn'], true) && ($fix = \App\Services\Audit\WebsiteAuditService::FIXES[$c['key']] ?? null))
+                            <div class="mt-1"><i class="bi bi-wrench-adjustable text-primary me-1"></i><span class="fw-semibold">How to fix:</span> {{ $fix }}</div>
+                        @endif
+                    </div>
                 </div>
             @endforeach
         </div>
