@@ -28,9 +28,10 @@ class CampaignController extends Controller
         $campaigns = Campaign::with(['template', 'creator', 'approver'])
             ->withCount([
                 'recipients as total_recipients',
-                'recipients as sent_count' => fn($q) => $q->whereIn('status', ['sent', 'delivered', 'replied']),
-                'recipients as delivered_count' => fn($q) => $q->whereIn('status', ['delivered', 'replied']),
-                'recipients as replied_count' => fn($q) => $q->where('status', 'replied'),
+                'recipients as sent_count' => fn($q) => $q->whereNotNull('sent_at'),
+                'recipients as delivered_count' => fn($q) => $q->whereNotNull('sent_at')->whereNull('bounced_at')->where('status', '!=', 'bounced'),
+                // a reply is matched to the prospect (threading headers are often stripped), auto-replies excluded
+                'recipients as replied_count' => fn($q) => $q->whereNotNull('sent_at')->whereHas('lead.inboundReplies', fn ($r) => $r->where(fn ($w) => $w->whereNull('category')->orWhere('category', '!=', 'out_of_office'))),
                 'recipients as bounced_count' => fn($q) => $q->where('status', 'bounced'),
             ])
             ->latest()
@@ -108,9 +109,7 @@ class CampaignController extends Controller
             'total' => $campaign->recipients()->count(),
             'draft' => $campaign->recipients()->where('status', 'draft')->count(),
             'approved' => $campaign->recipients()->where('status', 'approved')->count(),
-            'sent' => $campaign->recipients()->whereIn('status', ['sent', 'delivered', 'replied'])->count(),
-            'delivered' => $campaign->recipients()->whereIn('status', ['delivered', 'replied'])->count(),
-            'replied' => $campaign->recipients()->where('status', 'replied')->count(),
+            ...array_intersect_key(\App\Support\OutreachMetrics::summary(null, null, $campaign->id), array_flip(['sent', 'delivered', 'replied'])),
             'bounced' => $campaign->recipients()->where('status', 'bounced')->count(),
             'opted_out' => $campaign->recipients()->where('status', 'opted_out')->count(),
         ];

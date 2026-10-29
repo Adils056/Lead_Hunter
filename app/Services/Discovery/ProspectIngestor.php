@@ -23,6 +23,9 @@ use App\Services\Audit\SafeFetcher;
  */
 class ProspectIngestor
 {
+    /** Words that make "x.y@" a department, not a person ("info.sales@", "customer_service@"). */
+    public const NOT_A_NAME = '/^(info|contact|hello|sales|admin|office|enquiries|enquiry|support|team|mail|hi|business|customer|service|services|accounts|billing|bookings?|reception|marketing|hr|jobs|careers|hiring|press|media|web|webmaster|noreply|no|reply|general|main|front|desk|the|and|co|ltd|inc|group|clinic|dental|law|legal)$/';
+
     public function __construct(
         protected string $source,          // machine source key, e.g. google_places
         protected string $sourceName,      // human name stored on leads.source_name
@@ -50,7 +53,8 @@ class ProspectIngestor
             $domain = Company::domainFromEmail($data['public_email']);
         }
 
-        if ($this->icp && ($reason = $this->icp->exclusionReason($domain, $name, $data['description'] ?? null))) {
+        if (($reason = \App\Support\ChainBrand::reason($name, $domain))
+            || ($this->icp && ($reason = $this->icp->exclusionReason($domain, $name, $data['description'] ?? null)))) {
             $result->excludedCount++;
             $result->recordItem(['company' => $name, 'excluded' => $reason]);
 
@@ -144,6 +148,13 @@ class ProspectIngestor
         }
 
         $local = $email ? strtolower(strstr($email, '@', true)) : null;
+        // "marc.ripley@" / "jane_doe@" name a person even when the source gave no name (SQA bug 6): use it, never guess more
+        if (!($person['first_name'] ?? null) && empty($person['is_tender_contact']) && $local
+            && preg_match('/^([a-z]{2,20})[._]([a-z]{2,20})$/', $local, $nm) && !preg_match(self::NOT_A_NAME, $nm[1]) && !preg_match(self::NOT_A_NAME, $nm[2])) {
+            $person['first_name'] = ucfirst($nm[1]);
+            $person['last_name'] = ucfirst($nm[2]);
+            $hasPerson = true;
+        }
         $isGeneric = $local && preg_match('/^(info|contact|hello|sales|admin|office|enquiries|enquiry|support|team|mail|hi|business)$/', $local);
 
         $status = match (true) {

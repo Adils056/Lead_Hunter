@@ -16,13 +16,14 @@ class OutboxController extends Controller
         $match = fn ($w) => $w->where('email', 'like', "%{$q}%")->orWhere('full_name', 'like', "%{$q}%")
             ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
 
+        $m = \App\Support\OutreachMetrics::summary(); // same numbers as Dashboard / Analytics
         $stats = [
-            'sent' => CampaignRecipient::whereNotNull('sent_at')->count(),
+            'sent' => $m['sent'],
             'today' => CampaignRecipient::where('sent_at', '>=', now(config('leadpilot.timezone', 'Asia/Karachi'))->startOfDay()->utc())->count(), // the business day, like Autopilot
-            'replied' => CampaignRecipient::whereNotNull('sent_at')->whereHas('replies')->count(),
-            'bounced' => CampaignRecipient::whereNotNull('sent_at')->where(fn ($w) => $w->whereNotNull('bounced_at')->orWhere('status', 'bounced'))->count(),
+            'replied' => $m['replied'],
+            'bounced' => $m['bounced'],
+            'rate' => $m['reply_rate'],
         ];
-        $stats['rate'] = $stats['sent'] ? round(100 * $stats['replied'] / $stats['sent'], 1) : 0;
 
         if ($tab === 'replies') {
             $items = InboundReply::with(['lead.company', 'recipient'])

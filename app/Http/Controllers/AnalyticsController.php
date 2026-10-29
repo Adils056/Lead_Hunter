@@ -24,12 +24,13 @@ class AnalyticsController extends Controller
         // Funnel Counts
         $totalLeads = Lead::where('created_at', '>=', $startDate)->count();
         $verifiedLeads = Lead::where('created_at', '>=', $startDate)->where('email_verification_status', 'verified')->count();
-        $qualifiedLeads = Lead::where('created_at', '>=', $startDate)->where('overall_score', '>=', 60)->count();
-        $outreachSent = CampaignRecipient::where('sent_at', '>=', $startDate)->count();
-        $delivered = CampaignRecipient::where('delivered_at', '>=', $startDate)->count();
-        $bounced = CampaignRecipient::where('bounced_at', '>=', $startDate)->count();
-        $replies = InboundReply::where('received_at', '>=', $startDate)->count();
-        $positiveReplies = InboundReply::where('received_at', '>=', $startDate)->whereIn('classification', ['positive', 'meeting_request'])->count();
+        $qualifiedLeads = Lead::where('created_at', '>=', $startDate)->where('overall_score', '>=', \App\Support\ScoreBands::qualified())->count();
+        $m = \App\Support\OutreachMetrics::summary($startDate);
+        $outreachSent = $m['sent'];
+        $delivered = $m['delivered'];
+        $bounced = $m['bounced'];
+        $replies = $m['replied'];
+        $positiveReplies = $m['positive'];
         $meetings = Meeting::where('created_at', '>=', $startDate)->count();
         $proposals = Deal::where('created_at', '>=', $startDate)->whereIn('stage', ['proposal_sent', 'negotiation', 'won'])->count();
         $wonDeals = Deal::where('created_at', '>=', $startDate)->where('stage', 'won')->count();
@@ -38,10 +39,10 @@ class AnalyticsController extends Controller
         // Conversion Rates (division-by-zero protected)
         $verificationRate = $totalLeads > 0 ? round(($verifiedLeads / $totalLeads) * 100, 1) : 0;
         $qualificationRate = $totalLeads > 0 ? round(($qualifiedLeads / $totalLeads) * 100, 1) : 0;
-        $deliveryRate = $outreachSent > 0 ? round(($delivered / $outreachSent) * 100, 1) : 0;
-        $bounceRate = $outreachSent > 0 ? round(($bounced / $outreachSent) * 100, 1) : 0;
-        $replyRate = $delivered > 0 ? round(($replies / $delivered) * 100, 1) : 0;
-        $positiveRate = $replies > 0 ? round(($positiveReplies / $replies) * 100, 1) : 0;
+        $deliveryRate = $m['delivery_rate'];
+        $bounceRate = $m['bounce_rate'];
+        $replyRate = $m['reply_rate'];
+        $positiveRate = $m['positive_rate'];
         $meetingRate = $totalLeads > 0 ? round(($meetings / $totalLeads) * 100, 1) : 0;
 
         // Cost Analysis
