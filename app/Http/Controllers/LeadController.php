@@ -428,10 +428,13 @@ class LeadController extends Controller
             $ladder->refreshAll(true);
             $unranked = 0;
         }
-        $leads = Lead::with(['company', 'icpProfile'])->where('win_tier', $tier)
+        $country = \App\Support\Like::term($request->query('country')) ?: null;
+        $leads = Lead::with(['company', 'icpProfile'])->where('win_tier', $tier)->when($country, fn ($q) => $q->where('country', $country))
             ->orderByDesc('win_points')->orderByDesc('overall_score')->orderBy('id')->paginate(25)->withQueryString();
+        $countries = Lead::whereNotNull('win_tier')->whereNotNull('country')->distinct()->orderBy('country')->pluck('country');
 
-        return view('leads.win_ladder', ['tier' => $tier, 'leads' => $leads, 'counts' => $ladder->counts(), 'unranked' => $unranked, 'expected' => $ladder->expected($tier)]);
+        return view('leads.win_ladder', ['tier' => $tier, 'leads' => $leads, 'counts' => $ladder->counts($country), 'unranked' => $unranked,
+            'expected' => $ladder->expected($tier), 'country' => $country, 'countries' => $countries]);
     }
 
     public function winLadderRefresh(\App\Services\Outreach\WinLadderService $ladder)
@@ -447,7 +450,7 @@ class LeadController extends Controller
         $this->authorize('export', Lead::class);
         $tier = strtoupper(\App\Support\Like::term($request->query('tier', 'A')));
         $tier = isset(\App\Services\Outreach\WinLadderService::TIERS[$tier]) ? $tier : 'A';
-        $leads = $ladder->ranked($tier, 5000);
+        $leads = $ladder->ranked($tier, 5000, \App\Support\Like::term($request->query('country')) ?: null);
         $filename = 'leadpilot_win_ladder_' . $tier . '_' . date('Y-m-d_His') . '.csv';
         $callback = function () use ($leads, $tier) {
             $out = fopen('php://output', 'w');

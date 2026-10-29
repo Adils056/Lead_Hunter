@@ -117,6 +117,32 @@
                 </div>
 
                 <h5 class="fw-bold mb-3 text-dark border-bottom pb-2 pt-2">
+                    <i class="bi bi-hand-index-thumb text-primary me-2"></i>Call to action
+                </h5>
+                <p class="small text-muted">Every email stays short: one verified observation, one offer, and this one next step. The phone number is also added under your name.</p>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="cta_type">Next step in every email</label>
+                        <select name="cta_type" id="cta_type" class="form-select">
+                            @foreach(\App\Models\OutreachSetting::CTA_TYPES as $k => $label)<option value="{{ $k }}" @selected(old('cta_type', $settings->cta_type ?? 'reply') === $k)>{{ $label }}</option>@endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="contact_phone">Phone / WhatsApp</label>
+                        <input type="text" name="contact_phone" id="contact_phone" class="form-control" value="{{ old('contact_phone', $settings->contact_phone) }}" placeholder="+92 300 1234567">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="booking_url">Meeting booking link</label>
+                        <input type="url" name="booking_url" id="booking_url" class="form-control" value="{{ old('booking_url', $settings->booking_url) }}" placeholder="https://cal.com/eziline/15min">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="landing_url">Landing page</label>
+                        <input type="url" name="landing_url" id="landing_url" class="form-control" value="{{ old('landing_url', $settings->landing_url) }}" placeholder="https://eziline.com/website-audit">
+                    </div>
+                    <div class="col-12"><div class="small text-muted border rounded p-2 bg-light">Preview: <em>{{ $settings->ctaLine(true) }}</em></div></div>
+                </div>
+
+                <h5 class="fw-bold mb-3 text-dark border-bottom pb-2 pt-2">
                     <i class="bi bi-clock-history text-primary me-2"></i>Sending Windows & Quotas
                 </h5>
 

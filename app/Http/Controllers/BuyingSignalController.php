@@ -20,11 +20,15 @@ class BuyingSignalController extends Controller
 
     public function index(Request $request)
     {
-        $status = $request->query('status', 'all');
-        $type = $request->query('type');
-        $service = $request->query('service');
+        $status = \App\Support\Like::term($request->query('status', 'all')) ?: 'all';
+        $type = \App\Support\Like::term($request->query('type')) ?: null;
+        $service = \App\Support\Like::term($request->query('service')) ?: null;
+        $country = \App\Support\Like::term($request->query('country')) ?: null;
 
         $query = BuyingSignal::with('company');
+        if ($country) {
+            $query->whereHas('company', fn ($c) => $c->where('country', $country));
+        }
 
         if ($status !== 'all') {
             $query->where('verification_status', $status);
@@ -53,7 +57,10 @@ class BuyingSignalController extends Controller
             'business_launch' => 'New Business Launch',
         ];
 
-        return view('buying_signals.index', compact('signals', 'signalTypes', 'status', 'type', 'service'));
+        $countries = \App\Models\Company::whereHas('buyingSignals')->whereNotNull('country')->distinct()->orderBy('country')->pluck('country');
+        $services = \App\Support\ServiceCatalog::all();
+
+        return view('buying_signals.index', compact('signals', 'signalTypes', 'status', 'type', 'service', 'country', 'countries', 'services'));
     }
 
     public function create(Request $request)

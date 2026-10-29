@@ -38,7 +38,42 @@ class OutreachSetting extends Model
         'controlled_pilot_recipient',
         'activated_at',
         'activated_by',
+        'cta_type',
+        'booking_url',
+        'contact_phone',
+        'landing_url',
     ];
+
+    public const CTA_TYPES = [
+        'reply' => 'Reply to this email (default)',
+        'meeting' => 'Book a meeting (booking link)',
+        'call' => 'Call / WhatsApp (phone number)',
+        'consultation' => 'Free consultation',
+        'landing' => 'Visit a landing page',
+    ];
+
+    /** The one next step every email ends with. $auditFinding: the email opens with a website finding ("3 fixes" offer). */
+    public function ctaLine(bool $auditFinding): string
+    {
+        $booking = $this->booking_url ?: config('leadpilot.agency.booking_url');
+        $reply = $auditFinding ? 'Want me to send the 3 fixes I would make first? No charge.' : 'Open to a short call to see if it fits? No obligation.';
+
+        return match ($this->cta_type ?? 'reply') {
+            'meeting' => $booking ? "Worth a 15-minute call? Pick a time here: {$booking}" : $reply,
+            'call' => $this->contact_phone ? "Easiest is a quick call or WhatsApp: {$this->contact_phone}. Or just reply here." : $reply,
+            'consultation' => 'Want a free 20-minute consultation on this? ' . ($booking ? "Book it here: {$booking}" : 'Reply "yes" and I will send two times.'),
+            'landing' => $this->landing_url ? "Here is what we would change and how it works: {$this->landing_url}" : $reply,
+            default => $booking ? "Worth a 15-minute call? Pick a time here: {$booking}" : $reply,
+        };
+    }
+
+    /** Sender, company, and the phone number when set, so every email carries a direct contact. */
+    public function signature(): string
+    {
+        $agency = config('leadpilot.agency');
+
+        return trim(implode("\n", array_filter([$agency['sender_name'], $agency['name'], $this->contact_phone])));
+    }
 
     protected $casts = [
         'allowed_countries' => 'array',

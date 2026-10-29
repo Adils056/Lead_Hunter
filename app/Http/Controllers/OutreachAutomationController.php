@@ -62,7 +62,12 @@ class OutreachAutomationController extends Controller
             'controlled_pilot_recipient' => ['nullable', 'email', 'max:255'],
             'allowed_countries' => ['nullable', 'array'],
             'approved_services' => ['nullable', 'array'],
+            'cta_type' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(OutreachSetting::CTA_TYPES))],
+            'booking_url' => ['nullable', 'url:https', 'max:255', 'required_if:cta_type,meeting'],
+            'contact_phone' => ['nullable', 'string', 'max:40', 'regex:/^\+?[0-9 ()\-]{7,40}$/', 'required_if:cta_type,call'],
+            'landing_url' => ['nullable', 'url:https', 'max:255', 'required_if:cta_type,landing'],
         ]);
+        $data['cta_type'] = $data['cta_type'] ?? 'reply';
 
         if ($data['max_follow_ups'] > $data['max_sends_per_recipient'] - 1) {
             return back()->withInput()->withErrors(['max_follow_ups' => "First email + {$data['max_follow_ups']} follow-ups = " . ($data['max_follow_ups'] + 1)

@@ -12,8 +12,14 @@
             Each lead shows its <strong>success rate</strong>: the estimated chance of a reply, an interested reply and a deal if it gets the full email sequence.
         </p>
     </div>
-    <div class="d-flex gap-2">
-        <a href="{{ route('leads.win-ladder.export', ['tier' => $tier]) }}" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+    <div class="d-flex gap-2 flex-wrap">
+        <form method="GET" action="{{ route('leads.win-ladder') }}"><input type="hidden" name="tier" value="{{ $tier }}">
+            <select name="country" id="ladder-country" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Country">
+                <option value="">All countries</option>
+                @foreach($countries as $c)<option value="{{ $c }}" @selected($country === $c)>{{ $c }}</option>@endforeach
+            </select>
+        </form>
+        <a href="{{ route('leads.win-ladder.export', ['tier' => $tier, 'country' => $country]) }}" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
             <i class="bi bi-download"></i><span>Export rung {{ $tier }} (CSV)</span>
         </a>
         <form method="POST" action="{{ route('leads.win-ladder.refresh') }}">
@@ -32,7 +38,7 @@
 <div class="row g-2 mb-4">
     @foreach(\App\Services\Outreach\WinLadderService::ORDER as $t)
         <div class="col-6 col-md-4 col-xl-2">
-            <a href="{{ route('leads.win-ladder', ['tier' => $t]) }}" class="text-decoration-none">
+            <a href="{{ route('leads.win-ladder', ['tier' => $t, 'country' => $country]) }}" class="text-decoration-none">
                 <div class="card-lp p-3 h-100 {{ $tier === $t ? 'border border-2 border-' . $tiers[$t]['class'] : '' }}">
                     <div class="d-flex justify-content-between align-items-start">
                         <span class="badge bg-{{ $tiers[$t]['class'] }}{{ in_array($tiers[$t]['class'], ['warning','info']) ? ' text-dark' : '' }}"><i class="bi {{ $tiers[$t]['icon'] }} me-1"></i>{{ $t }}</span>
