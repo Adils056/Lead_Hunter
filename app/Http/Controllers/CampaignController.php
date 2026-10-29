@@ -215,11 +215,11 @@ class CampaignController extends Controller
     public function unsubscribe(Request $request)
     {
         // Laravel already URL-decodes the query; decoding again turns "john+sales@" into "john sales@".
-        $raw = trim((string) $request->input('email', ''));
+        $raw = \App\Support\Like::term($request->input('email', '')); // '' for array input (?email[]=) instead of a 500
         $candidates = array_unique([$raw, urldecode($raw)]); // v1-v3 links were double-encoded
         $email = null;
         $valid = false;
-        $token = (string) $request->input('token', '');
+        $token = \App\Support\Like::term($request->input('token', ''));
         foreach ($candidates as $c) {
             if (hash_equals(\App\Services\Outreach\OutreachMailer::unsubscribeToken($c), $token) || hash_equals(md5($c . config('app.key')), $token)) {
                 $valid = true;

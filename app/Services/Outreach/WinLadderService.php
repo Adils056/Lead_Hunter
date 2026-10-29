@@ -66,9 +66,13 @@ class WinLadderService
         'website_match' => 'Website and e-mail are on different domains — confirm the business\'s real website (edit the company) before any claim about it',
     ];
 
+    /** Success-rate estimate for the lead being evaluated (WinChance), attached to whatever rung it lands on. */
+    protected ?array $chance = null;
+
     public function __construct(
         protected EligibilityGateService $gate,
         protected OfferRecommender $offers,
+        protected WinChance $winChance,
     ) {
     }
 
@@ -163,6 +167,27 @@ class WinLadderService
         if ($company && (int) $company->google_review_count >= 20) {
             $add(30, "Active business: {$company->google_review_count} Google reviews" . ($company->google_rating ? " ({$company->google_rating}★)" : ''));
         }
+
+        // ---------- 1b. Success rate: strongest evidence kind + who we reach + how sure the address is
+        $auditScore = ($company && $company->website_audited_at && $company->website_opportunity_score !== null) ? (int) $company->website_opportunity_score : null;
+        $this->chance = $this->winChance->estimate([
+            'segment' => match (true) {
+                (bool) $rfp => 'request',
+                (bool) $need => 'hiring',
+                (bool) $growth => 'growth',
+                $auditScore !== null && $auditScore >= 50 => 'audit_high',
+                $auditScore !== null && $auditScore >= 30 => 'audit_mid',
+                $auditScore !== null && $auditScore > 0 => 'audit_low',
+                (bool) $noSite => 'no_site',
+                default => 'none',
+            },
+            'decision_maker' => $prefHit || ($title !== '' && preg_match(LeadScoringService::DECISION_MAKER, $title)),
+            'named' => (bool) ($lead->first_name || $lead->last_name),
+            'shared_inbox' => $lead->contact_status === 'generic_inbox',
+            'email_status' => $emailStatus,
+            'evidence_age_days' => $age,
+            'active_business' => $company && (int) $company->google_review_count >= 20,
+        ]);
 
         // ---------- 2. Rung, top-down
         $lastReply = $lead->exists ? $lead->inboundReplies()->latest('received_at')->first() : null;
@@ -274,7 +299,15 @@ class WinLadderService
 
     protected function rung(string $tier, int $points, array $reasons, array $blockers, string $next): array
     {
+        $chance = $this->chance;
+        if ($chance && $tier === 'D') {
+            $chance = array_merge($chance, ['reply' => 0.0, 'interested' => 0.0, 'deal' => 0.0, 'basis' => 'not emailed (do-not-email rung)']);
+        } elseif ($chance && $tier === 'R') {
+            $chance = array_merge($chance, ['reply' => 100.0, 'basis' => 'already replied']);
+        }
+
         return [
+            'chance' => $chance,
             'tier' => $tier,
             'points' => max(0, $points),
             'reasons' => array_values(array_slice($reasons, 0, 8)),
@@ -296,11 +329,27 @@ class WinLadderService
             'win_blockers' => json_encode($r['blockers'], JSON_UNESCAPED_UNICODE),
             'win_next_action' => mb_substr($r['next_action'], 0, 255),
             'win_computed_at' => now(),
-        ]);
-        $lead->forceFill(['win_tier' => $r['tier'], 'win_points' => $r['points'], 'win_reasons' => $r['reasons'],
+        ] + $this->chanceColumns($r));
+        $lead->forceFill($this->chanceColumns($r) + ['win_tier' => $r['tier'], 'win_points' => $r['points'], 'win_reasons' => $r['reasons'],
             'win_blockers' => $r['blockers'], 'win_next_action' => $r['next_action'], 'win_computed_at' => now()])->syncOriginal();
 
         return $r;
+    }
+
+    protected function chanceColumns(array $r): array
+    {
+        $c = $r['chance'] ?? null;
+
+        return $c ? ['win_segment' => $c['segment'], 'win_reply_chance' => $c['reply'], 'win_interested_chance' => $c['interested'],
+            'win_deal_chance' => $c['deal'], 'win_chance_basis' => mb_substr($c['basis'], 0, 120)] : [];
+    }
+
+    /** Expected outcomes if every lead on a rung gets the full sequence: sums of the per-lead chances. */
+    public function expected(string $tier): array
+    {
+        $row = Lead::where('win_tier', $tier)->selectRaw('count(*) as n, sum(win_reply_chance) as r, sum(win_interested_chance) as i, sum(win_deal_chance) as d')->first();
+
+        return ['leads' => (int) $row->n, 'replies' => round(((float) $row->r) / 100, 1), 'interested' => round(((float) $row->i) / 100, 1), 'deals' => round(((float) $row->d) / 100, 2)];
     }
 
     /** Recompute every lead (or only stale ones). Returns counts per rung. */

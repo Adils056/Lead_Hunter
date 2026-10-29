@@ -105,7 +105,7 @@ class AuthController extends Controller
         }
         $key = (string) config('leadpilot.registration.key');
 
-        return $key === '' || hash_equals($key, (string) $request?->input('key'));
+        return $key === '' || hash_equals($key, \App\Support\Like::term($request?->input('key')));
     }
 
     public function showRegister(Request $request)
@@ -121,7 +121,7 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         abort_unless($this->registrationEnabled($request), 404);
-        $request->merge(['email' => strtolower(trim((string) $request->input('email')))]);
+        $request->merge(['email' => strtolower(\App\Support\Like::term($request->input('email')))]); // '' for email[]= (validation then rejects it)
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],

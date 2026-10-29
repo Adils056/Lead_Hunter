@@ -142,6 +142,9 @@
                         </div>
                         <div class="small text-muted mt-1" style="font-size: 0.725rem;">
                             Intent: {{ $lead->intent_score }} | Fit: {{ $lead->service_fit_score }}
+                            @if($lead->win_interested_chance !== null && !in_array($lead->win_tier, ['D', 'R'], true))
+                                | <span class="text-success" title="Success rate: estimated chance of an interested reply · {{ $lead->win_chance_basis }}">{{ rtrim(rtrim(number_format($lead->win_interested_chance, 1), '0'), '.') }}% win</span>
+                            @endif
                         </div>
                     </td>
 

@@ -419,7 +419,7 @@ class LeadController extends Controller
     public function winLadder(Request $request, \App\Services\Outreach\WinLadderService $ladder)
     {
         $this->authorize('viewAny', Lead::class);
-        $tier = strtoupper((string) $request->query('tier', 'A'));
+        $tier = strtoupper(\App\Support\Like::term($request->query('tier', 'A')));
         if (!isset(\App\Services\Outreach\WinLadderService::TIERS[$tier])) {
             $tier = 'A';
         }
@@ -431,7 +431,7 @@ class LeadController extends Controller
         $leads = Lead::with(['company', 'icpProfile'])->where('win_tier', $tier)
             ->orderByDesc('win_points')->orderByDesc('overall_score')->orderBy('id')->paginate(25)->withQueryString();
 
-        return view('leads.win_ladder', ['tier' => $tier, 'leads' => $leads, 'counts' => $ladder->counts(), 'unranked' => $unranked]);
+        return view('leads.win_ladder', ['tier' => $tier, 'leads' => $leads, 'counts' => $ladder->counts(), 'unranked' => $unranked, 'expected' => $ladder->expected($tier)]);
     }
 
     public function winLadderRefresh(\App\Services\Outreach\WinLadderService $ladder)
@@ -445,16 +445,17 @@ class LeadController extends Controller
     public function winLadderExport(Request $request, \App\Services\Outreach\WinLadderService $ladder)
     {
         $this->authorize('export', Lead::class);
-        $tier = strtoupper((string) $request->query('tier', 'A'));
-        $leads = $ladder->ranked(isset(\App\Services\Outreach\WinLadderService::TIERS[$tier]) ? $tier : 'A', 5000);
+        $tier = strtoupper(\App\Support\Like::term($request->query('tier', 'A')));
+        $tier = isset(\App\Services\Outreach\WinLadderService::TIERS[$tier]) ? $tier : 'A';
+        $leads = $ladder->ranked($tier, 5000);
         $filename = 'leadpilot_win_ladder_' . $tier . '_' . date('Y-m-d_His') . '.csv';
         $callback = function () use ($leads, $tier) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
-            fputcsv($out, ['Rung', 'Rank', 'Company', 'Website', 'City', 'Country', 'Contact', 'Job title', 'Email', 'Email status', 'Score', 'Points', 'Why', 'Blockers', 'Next action']);
+            fputcsv($out, ['Rung', 'Rank', 'Company', 'Website', 'City', 'Country', 'Contact', 'Job title', 'Email', 'Email status', 'Score', 'Points', 'Reply %', 'Interested %', 'Deal %', 'Success-rate basis', 'Why', 'Blockers', 'Next action']);
             foreach ($leads as $i => $l) {
                 fputcsv($out, [$tier, $i + 1, $l->company?->name, $l->company?->website, $l->company?->city, $l->country, $l->full_name, $l->job_title, $l->email,
-                    $l->email_verification_status, $l->overall_score, $l->win_points, implode(' | ', (array) $l->win_reasons), implode(' | ', (array) $l->win_blockers), $l->win_next_action]);
+                    $l->email_verification_status, $l->overall_score, $l->win_points, $l->win_reply_chance, $l->win_interested_chance, $l->win_deal_chance, $l->win_chance_basis, implode(' | ', (array) $l->win_reasons), implode(' | ', (array) $l->win_blockers), $l->win_next_action]);
             }
             fclose($out);
         };

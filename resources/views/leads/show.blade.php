@@ -19,6 +19,11 @@
                 <span class="badge-lp {{ \App\Support\ScoreBands::badgeClass($lead->overall_score) }}">
                     Score: {{ $lead->overall_score }} / 100
                 </span>
+                @if($lead->win_interested_chance !== null && !in_array($lead->win_tier, ['D', 'R'], true))
+                    <span class="badge bg-success-subtle text-success border border-success-subtle" title="Estimated if this lead gets the full email sequence · {{ $lead->win_chance_basis }}">
+                        Success rate: {{ rtrim(rtrim(number_format($lead->win_interested_chance, 1), '0'), '.') }}% interested · {{ rtrim(rtrim(number_format($lead->win_reply_chance, 1), '0'), '.') }}% reply
+                    </span>
+                @endif
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3 text-muted small mt-1">
                 <span><i class="bi bi-briefcase me-1"></i>{{ $lead->job_title ?: 'Role unknown' }}</span>
