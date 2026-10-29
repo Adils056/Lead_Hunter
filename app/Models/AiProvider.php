@@ -40,6 +40,26 @@ class AiProvider extends Model
         [125, 'gemini', 'Google Gemini / gemini-3.5-flash-lite', 'gemini-3.5-flash-lite', 500],
     ];
 
+    /** Models the owner keeps switched off in that list (paid, or spare capacity): they get the key but stay off. */
+    public const OFF_IN_OWNER_LIST = ['gpt-oss-120b', 'gemma-4-31b-it', 'deepseek-flash', 'qwen/qwen3.6-27b'];
+
+    /** Add the recommended list once (rows already there with the same model are left alone); returns how many were added. */
+    public static function addRecommended(): int
+    {
+        $added = 0;
+        foreach (self::RECOMMENDED as [$priority, $preset, $name, $model, $limit]) {
+            $p = self::PRESETS[$preset];
+            if (self::where('model', $model)->where('base_url', $p['base_url'])->exists()) {
+                continue;
+            }
+            self::create(['priority' => $priority, 'name' => $name, 'kind' => $p['kind'], 'base_url' => $p['base_url'], 'model' => $model,
+                'daily_limit' => $limit, 'is_active' => false]);
+            $added++;
+        }
+
+        return $added;
+    }
+
     protected $fillable = ['priority', 'name', 'kind', 'base_url', 'model', 'api_key', 'daily_limit', 'used_today', 'used_on', 'is_active',
         'cooldown_until', 'last_status', 'last_error', 'last_used_at'];
 

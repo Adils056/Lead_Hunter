@@ -519,6 +519,42 @@ Artisan::command('leadpilot:fresh-businesses {--days=14 : Incorporated in the la
     $this->info("Domain ages: {$d['checked']} checked, {$d['fresh']} registered within the last year.");
 })->purpose('Find newly started businesses: new UK companies and fresh domains');
 
+Artisan::command('leadpilot:ai-keys', function () {
+    // Set the AI model keys from the server's terminal: the owner's recommended list is added, each service's key is
+    // asked once (typed hidden, never echoed or logged) and applied to its models, then one model per service is tested.
+    $added = \App\Models\AiProvider::addRecommended();
+    $this->info("AI model list ready ({$added} added). Paste each key and press Enter; press Enter alone to skip a service.");
+    $chain = app(\App\Services\Sales\AiProviderChain::class);
+    $rows = [];
+    foreach (\App\Models\AiProvider::PRESETS as $slug => $preset) {
+        $models = \App\Models\AiProvider::where('base_url', $preset['base_url'])->orderBy('priority')->get();
+        if ($models->isEmpty()) {
+            continue;
+        }
+        $key = trim((string) $this->secret("{$preset['label']} key ({$models->count()} model(s))"));
+        if ($key === '') {
+            continue;
+        }
+        $perModel = $models->count() > 1 && !$this->confirm("Use this {$preset['label']} key for all {$models->count()} models?", true);
+        foreach ($models as $m) {
+            $k = $key;
+            if ($perModel) {
+                $own = trim((string) $this->secret("Key for {$m->model} (Enter = the same {$preset['label']} key)"));
+                $k = $own !== '' ? $own : $key;
+            }
+            $m->forceFill(['api_key' => $k, 'is_active' => !in_array($m->model, \App\Models\AiProvider::OFF_IN_OWNER_LIST, true),
+                'cooldown_until' => null, 'last_status' => null, 'last_error' => null])->save();
+        }
+        $probe = $models->first(fn ($m) => $m->fresh()->is_active) ?? $models->first();
+        $r = $chain->test($probe->fresh());
+        $rows[] = [$preset['label'], $probe->model, $r['ok'] ? 'OK' : 'FAILED', mb_substr($r['message'], 0, 70), $r['ms'] . ' ms'];
+    }
+    if ($rows) {
+        $this->table(['Service', 'Tested model', 'Result', 'Detail', 'Time'], $rows);
+    }
+    $this->info('On: ' . \App\Models\AiProvider::where('is_active', true)->count() . ' model(s). See Settings → AI Models.');
+})->purpose('Set the AI model keys (hidden input) for the recommended list and test each service');
+
 Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
     // Decision-makers named on a company's own site but with no published address: try the common patterns on the
     // company's mail server and keep one only when that mailbox is accepted and a random one is not (no mail is sent).
