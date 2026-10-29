@@ -339,8 +339,9 @@ Artisan::command('leadpilot:reaudit-shells {--seconds=300 : Stop after this many
             break;
         }
         $latest = $c->latestWebsiteAudit;
-        if (!$latest || $latest->status !== 'completed' || $latest->page_size_bytes >= 4096) {
-            continue; // already re-audited
+        if (!$latest || $latest->status !== 'completed' || $latest->page_size_bytes >= 4096
+            || ($latest->contacts_found['people_crawl'] ?? 0) >= \App\Services\Audit\WebsiteAuditService::PEOPLE_CRAWL_VERSION) {
+            continue; // already re-audited by the current audit code
         }
         try {
             $a = $audits->audit($c);
