@@ -354,7 +354,7 @@ class OsmOverpassAdapter extends AbstractDiscoveryAdapter
                 $addr = trim(implode(', ', array_filter([trim(($t['addr:housenumber'] ?? '') . ' ' . ($t['addr:street'] ?? '')), $t['addr:city'] ?? null, $t['addr:postcode'] ?? null])), ', ');
 
                 $up = $ingestor->upsertCompany([
-                    'name' => $t['name'],
+                    'name' => $t['name:en'] ?? $t['int_name'] ?? $t['name'], // English name when OSM has one (local script otherwise)
                     'website' => $website,
                     'public_phone' => $phone ? trim(explode(';', $phone)[0]) : null,
                     'public_email' => $email ? trim(explode(';', $email)[0]) : null,

@@ -79,6 +79,13 @@ class WebsiteAuditService
         }
         $ms = (int) round((microtime(true) - $t0) * 1000);
 
+        // 401/403/407/429/451: the site is up but refuses THIS server (geo/IP block, firewall, rate limit). Seen live:
+        // a US law firm answered "403 Forbidden" to Pakistan while it loads fine in the US. Never a "site is down" claim.
+        if ($res && in_array($res->status(), self::BLOCKED_STATUSES, true)) {
+            return $this->store($company, $url, $this->lastFinalUrl ?? $url, 'bot_protected', $res->status(), $ms, null, [
+                $this->check('reachable', 'Website reachable', 'info', $res->status(), "The site refused our server (HTTP {$res->status()}: blocked by region, firewall or rate limit). It is not down; it could not be audited from here."),
+            ], [], $contacts, null);
+        }
         if (!$res || $res->status() >= 400) {
             $checks[] = $this->check('reachable', 'Website reachable', 'fail', $res?->status(), $res ? "Homepage returned HTTP {$res->status()}." : 'Request failed: ' . mb_substr($err ?? 'unknown', 0, 200), ['website_unreachable']);
             // One failed load proves nothing (outage, geo-block, or a directory listing pointing at someone else's
@@ -198,6 +205,9 @@ class WebsiteAuditService
 
         return $audit;
     }
+
+    /** HTTP answers that mean "not for you", not "down". */
+    public const BLOCKED_STATUSES = [401, 403, 407, 429, 451];
 
     public const BOT_WALL_PATTERNS = [
         'captcha', 'just a moment', 'attention required', 'checking your browser', 'are you a robot', 'are you human',
