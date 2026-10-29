@@ -177,4 +177,28 @@ class SalesGrowthTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
         $this->actingAs($admin)->get(route('companies.index', ['search' => 'زیقور']))->assertOk()->assertSee('Zyqor Dental Care');
     }
+
+    public function test_a_link_in_bio_page_is_not_a_website_and_never_names_the_business(): void
+    {
+        $this->assertFalse(WebsiteFinder::isOwnSite('https://linktr.ee/mamar_aljamal'));
+        $this->assertFalse(WebsiteFinder::isOwnSite('https://www.instagram.com/salon'));
+        $this->assertTrue(WebsiteFinder::isOwnSite('https://zyqordental.co.uk'));
+        $this->assertTrue(app(\App\Services\Discovery\Adapters\OverturePlacesAdapter::class)->isSocialUrl('https://linktr.ee/salon'), 'not imported as a website');
+
+        Http::fake(['*' => Http::response('<html><head><title>Linktree</title><meta property="og:site_name" content="Linktree"></head><body>x</body></html>', 200)]);
+        $salon = Company::create(['name' => 'صالون ممر الجمال', 'website' => 'https://linktr.ee/mamar', 'country' => 'Saudi Arabia']);
+        $this->artisan('leadpilot:english-names')->assertSuccessful();
+        $this->assertSame('صالون ممر الجمال', $salon->fresh()->name);
+
+        // 29 Oct live repair: the salon was renamed "Linktree" and its page audited
+        $salon->update(['name' => 'Linktree', 'local_name' => 'صالون ممر الجمال', 'domain' => 'linktr.ee', 'website_opportunity_score' => 40]);
+        WebsiteAudit::create(['company_id' => $salon->id, 'url' => $salon->website, 'status' => 'completed', 'audited_at' => now()]);
+        $own = Company::create(['name' => 'Zyqor Dental', 'website' => 'https://zyqordental.co.uk', 'domain' => 'zyqordental.co.uk']);
+        (require base_path('database/migrations/2026_10_29_000011_clear_social_profile_websites.php'))->up();
+
+        $salon->refresh();
+        $this->assertSame(['صالون ممر الجمال', null, null, null], [$salon->name, $salon->local_name, $salon->website, $salon->domain]);
+        $this->assertSame(0, WebsiteAudit::where('company_id', $salon->id)->count());
+        $this->assertSame('https://zyqordental.co.uk', $own->fresh()->website, 'own sites untouched');
+    }
 }
