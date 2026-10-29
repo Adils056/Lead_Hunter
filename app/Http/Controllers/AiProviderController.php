@@ -57,7 +57,7 @@ class AiProviderController extends Controller
             // one Groq / Gemini key serves every model on that service
             foreach (AiProvider::where('id', '<>', $provider->id)->where('kind', $provider->kind)->where('base_url', $provider->base_url)->get() as $other) {
                 $other->forceFill(['api_key' => $key, 'cooldown_until' => null, 'last_status' => null, 'last_error' => null,
-                    'is_active' => $other->api_key ? $other->is_active : true])->save();
+                    'is_active' => $other->api_key ? $other->is_active : !in_array($other->model, AiProvider::OFF_IN_OWNER_LIST, true)])->save();
                 $shared++;
             }
         }
@@ -101,16 +101,7 @@ class AiProviderController extends Controller
     public function recommended()
     {
         $this->admin();
-        $added = 0;
-        foreach (AiProvider::RECOMMENDED as [$priority, $preset, $name, $model, $limit]) {
-            $p = AiProvider::PRESETS[$preset];
-            if (AiProvider::where('model', $model)->where('base_url', $p['base_url'])->exists()) {
-                continue;
-            }
-            AiProvider::create(['priority' => $priority, 'name' => $name, 'kind' => $p['kind'], 'base_url' => $p['base_url'], 'model' => $model,
-                'daily_limit' => $limit, 'is_active' => false]);
-            $added++;
-        }
+        $added = AiProvider::addRecommended();
 
         return back()->with('success', "{$added} model(s) added. Each stays off until its key is set: Edit one per service and tick \"same key for this service\".");
     }
