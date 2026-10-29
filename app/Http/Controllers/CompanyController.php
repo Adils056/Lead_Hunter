@@ -41,6 +41,7 @@ class CompanyController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 \App\Support\Like::where($q, 'name', $search);
+                \App\Support\Like::where($q, 'local_name', $search, 'or'); // the Urdu / Arabic name still finds it
                 \App\Support\Like::where($q, 'domain', $search, 'or');
                 \App\Support\Like::where($q, 'city', $search, 'or');
             });
