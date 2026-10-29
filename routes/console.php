@@ -374,7 +374,9 @@ Artisan::command('leadpilot:find-websites {--limit=60 : Companies to try} {--sec
     // audit reads the contact / team pages, which is where the inbox and the decision-maker are found.
     $deadline = microtime(true) + (int) $this->option('seconds');
     $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNull('website')->whereHas('leads')
-        ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')->orderByDesc('id')
+        ->withMax('leads', 'overall_score')
+        ->orderByRaw('CASE WHEN incorporated_on IS NOT NULL THEN 0 ELSE 1 END') // newly incorporated businesses first: they need a site now
+        ->orderByDesc('leads_max_overall_score')->orderByDesc('id')
         ->lazy(200); // walk past companies already tried this month (cache), instead of stalling on the same top rows
 
     $done = $found = $audited = 0;
@@ -508,6 +510,14 @@ Artisan::command('leadpilot:radar {--days=7 : Look back this many days}', functi
     $closed = \App\Models\RadarItem::where('status', 'new')->whereHas('signal', fn ($q) => $q->whereNotNull('expiry_date')->where('expiry_date', '<', now()->toDateString()))->update(['status' => 'dismissed']);
     $this->line("Closed tenders taken off the radar: {$closed}");
 })->purpose("Buyer's Radar: scan public forums for buying intent and retire closed items");
+
+Artisan::command('leadpilot:fresh-businesses {--days=14 : Incorporated in the last N days} {--limit=300} {--domains=200 : Domain ages to check}', function (\App\Services\Discovery\FreshBusinessService $fresh) {
+    // Newly started businesses: UK incorporations (Companies House) and companies whose own domain is under a year old (RDAP).
+    $r = $fresh->importUkIncorporations((int) $this->option('days'), (int) $this->option('limit'));
+    $r['error'] ? $this->warn('Companies House: ' . $r['error']) : $this->info("Companies House: {$r['seen']} new companies read, {$r['companies']} added, {$r['signals']} new-business signal(s).");
+    $d = $fresh->checkDomainAges((int) $this->option('domains'));
+    $this->info("Domain ages: {$d['checked']} checked, {$d['fresh']} registered within the last year.");
+})->purpose('Find newly started businesses: new UK companies and fresh domains');
 
 Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
     // Decision-makers named on a company's own site but with no published address: try the common patterns on the
@@ -858,5 +868,6 @@ Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03
 // second pass for decision-makers that daytime audits (autopilot, website finder) put on the record
 Schedule::command('leadpilot:find-emails --limit=40 --seconds=420')->dailyAt('14:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:radar --days=3')->cron('17 */2 * * *')->withoutOverlapping(10)->runInBackground();
+Schedule::command('leadpilot:fresh-businesses')->dailyAt('05:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:weekly-review')->weeklyOn(1, '09:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();

@@ -61,6 +61,8 @@ class RadarService
             in_array($src, ['remoteok', 'himalayas', 'arbeitnow', 'remotive_public_api', 'ats_public_api'], true) => 'Job boards',
             $src === 'website_audit' || $s->signal_type === 'website_issues' => 'Website audit',
             $src === 'google_places' => 'Google Maps',
+            $src === 'companies_house' => 'Companies House (new companies)',
+            $src === 'rdap' => 'Fresh domains',
             default => 'Other signals',
         };
     }

@@ -47,6 +47,11 @@ class CompanyController extends Controller
             });
         }
 
+        if ($request->query('fresh')) {
+            // new businesses: incorporated or own domain registered in the last 12 months
+            $query->where(fn ($q) => $q->where('incorporated_on', '>=', now()->subYear()->toDateString())->orWhere('domain_registered_on', '>=', now()->subYear()->toDateString()));
+        }
+
         if ($country) {
             $query->where('country', $country);
         }

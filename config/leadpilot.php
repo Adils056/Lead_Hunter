@@ -396,6 +396,7 @@ return [
         'gemini_model' => env('GEMINI_MODEL', 'gemini-2.5-flash-lite'),
         'openai' => env('OPENAI_API_KEY'),
         'hunter' => env('HUNTER_API_KEY'),
+        'companies_house' => env('COMPANIES_HOUSE_API_KEY'),
     ],
 
     'imap' => [
