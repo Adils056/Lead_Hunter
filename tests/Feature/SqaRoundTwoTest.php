@@ -92,4 +92,17 @@ class SqaRoundTwoTest extends TestCase
         $this->assertNull($ing->upsertCompany(['name' => 'Bakery', 'website' => 'https://somebakery.example'], $r)['company']);
         $this->assertNotNull($ing->upsertCompany(['name' => 'Bakery Bliss', 'website' => 'https://bakerybliss.example'], $r)['company']);
     }
+
+    public function test_bug_14_gemini_key_can_be_set_from_the_integrations_page(): void
+    {
+        config(['leadpilot.keys.gemini' => null]);
+        Integration::create(['provider' => 'openai', 'name' => 'OpenAI', 'is_active' => false, 'status' => 'pending_credentials']);
+        $this->actingAs($this->admin)->get(route('settings.integrations'))->assertOk()->assertSee('Google Gemini');
+
+        $registry = app(\App\Services\Integrations\ProviderRegistry::class);
+        $this->assertFalse($registry->isConfigured('gemini'));
+        $gemini = Integration::where('provider', 'gemini')->firstOrFail();
+        $gemini->update(['is_active' => true, 'credentials' => \Illuminate\Support\Facades\Crypt::encryptString(json_encode(['api_key' => 'g-test']))]);
+        $this->assertSame('g-test', $registry->geminiKey());
+    }
 }

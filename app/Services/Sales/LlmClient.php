@@ -51,7 +51,7 @@ class LlmClient
     {
         $model = config('leadpilot.keys.gemini_model', 'gemini-2.5-flash-lite');
         // key in a header, never in the URL (URLs end up in error messages/logs)
-        $res = Http::timeout(30)->withHeaders(['x-goog-api-key' => (string) config('leadpilot.keys.gemini')])->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
+        $res = Http::timeout(30)->withHeaders(['x-goog-api-key' => (string) app(\App\Services\Integrations\ProviderRegistry::class)->geminiKey()])->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
             'systemInstruction' => ['parts' => [['text' => $system]]],
             'contents' => [['role' => 'user', 'parts' => [['text' => $user]]]],
             'generationConfig' => ['responseMimeType' => 'application/json', 'maxOutputTokens' => $maxTokens, 'temperature' => 0.4],

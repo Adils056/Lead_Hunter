@@ -18,10 +18,8 @@ class IntegrationController extends Controller
         $this->authorize('viewAny', Integration::class);
 
         // SQA bug 14: a server installed without demo seeding had no provider rows, so the page showed no key fields.
-        // List every known provider (inactive, no key) the first time the page opens.
-        if (!Integration::exists()) {
-            (new \Database\Seeders\IntegrationSeeder())->run();
-        }
+        // List every known provider (inactive, no key); firstOrCreate also adds providers added since install (Gemini).
+        (new \Database\Seeders\IntegrationSeeder())->run();
         $integrations = Integration::with(['syncLogs' => fn($q) => $q->latest()->limit(5)])->get();
         $recentUsage = UsageLog::latest()->limit(10)->get();
         $recentAudits = AuditLog::with('user')->latest()->limit(10)->get();

@@ -75,6 +75,7 @@ class EmailFinderTest extends TestCase
         $nadia = Lead::where('email', 'nadia.hussain@proof.test')->firstOrFail();
         $this->assertSame(['Nadia', 'Hussain', 'Founder & CEO', 'identified'], [$nadia->first_name, $nadia->last_name, $nadia->job_title, $nadia->contact_status]);
         $this->assertSame('verified', $nadia->email_verification_status);
+        $this->assertNotNull(\App\Models\ProviderHealth::where('provider', 'dns_mx')->value('last_verified_at'), 'SQA bug 16: Setup shows the SMTP check as really used');
         $this->assertDatabaseHas('data_provenance', ['subject_id' => $nadia->id, 'field' => 'email', 'source' => 'email_pattern_smtp']);
         $this->assertSame(0, Lead::where('company_id', $catch->id)->where('contact_status', 'identified')->count(), 'catch-all proves nothing: nothing kept');
         $this->assertSame(0, Lead::where('company_id', $quiet->id)->where('contact_status', 'identified')->count());
