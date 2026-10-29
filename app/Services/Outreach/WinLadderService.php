@@ -379,9 +379,10 @@ class WinLadderService
         return $counts;
     }
 
-    public function counts(): array
+    public function counts(?string $country = null): array
     {
-        $db = Lead::query()->whereNotNull('win_tier')->selectRaw('win_tier, count(*) as c')->groupBy('win_tier')->pluck('c', 'win_tier')->all();
+        $db = Lead::query()->whereNotNull('win_tier')->when($country, fn ($q) => $q->where('country', $country))
+            ->selectRaw('win_tier, count(*) as c')->groupBy('win_tier')->pluck('c', 'win_tier')->all();
         $out = [];
         foreach (self::ORDER as $t) {
             $out[$t] = (int) ($db[$t] ?? 0);
@@ -391,9 +392,9 @@ class WinLadderService
     }
 
     /** Ranked leads for one rung (best first). */
-    public function ranked(string $tier, int $limit = 50)
+    public function ranked(string $tier, int $limit = 50, ?string $country = null)
     {
-        return Lead::with(['company', 'icpProfile'])->where('win_tier', $tier)
+        return Lead::with(['company', 'icpProfile'])->where('win_tier', $tier)->when($country, fn ($q) => $q->where('country', $country))
             ->orderByDesc('win_points')->orderByDesc('overall_score')->orderBy('id')->limit($limit)->get();
     }
 

@@ -137,12 +137,10 @@ class ConversionAssistantService
         $greeting = ($lead->contact_status === 'identified' && $lead->first_name) ? "Hi {$lead->first_name}," : ($name ? "Hi {$name} team," : 'Hi there,');
         $f1 = $facts[0]['text'];
         $subject = $this->subjectFor($facts[0], $name ?? $site ?? 'your business');
-        $cta = $agency['booking_url']
-            ? 'Worth a 15-minute call? You can pick a time here: ' . $agency['booking_url']
-            : ($facts[0]['source'] === 'website_audit'
-                ? 'Want me to send the 3 fixes I would make first? No charge.'
-                : 'Open to a short call to see if it fits? No obligation.');
-        $body = "{$greeting}\n\nI noticed {$f1}.\n\nWe help businesses like yours with {$offer['pitch']}.\n\n{$cta}\n\n{$agency['sender_name']}\n{$agency['name']}";
+        // short and factual: one verified observation, one offer, one clear next step (Outreach Engine → Call to action)
+        $settings = \App\Models\OutreachSetting::current();
+        $cta = $settings->ctaLine($facts[0]['source'] === 'website_audit');
+        $body = "{$greeting}\n\nI noticed {$f1}.\n\nWe help businesses like yours with {$offer['pitch']}.\n\n{$cta}\n\n" . $settings->signature();
 
         $draft = ['subject' => $subject, 'body' => $body, 'generator' => 'template'];
 
@@ -221,7 +219,7 @@ class ConversionAssistantService
         // No personal data leaves the system: the greeting (may contain a name) is a placeholder.
         $res = app(LlmClient::class)->json(
             "You write short, plain, friendly B2B cold emails. Use ONLY the facts provided; do not add any other claim, number, statistic, client name or promise. Under {$limit} words. No buzzwords, no flattery, no exclamation marks. Start the body with the literal token {{GREETING}} and end with the exact call-to-action and signature given. Return JSON {\"subject\": string, \"body\": string}.",
-            json_encode(['facts' => $allowedFacts, 'offer' => $offer['pitch'], 'call_to_action' => $cta, 'signature' => $agency['sender_name'] . "\n" . $agency['name']]),
+            json_encode(['facts' => $allowedFacts, 'offer' => $offer['pitch'], 'call_to_action' => $cta, 'signature' => \App\Models\OutreachSetting::current()->signature()]),
             ['type' => 'object', 'additionalProperties' => false, 'required' => ['subject', 'body'], 'properties' => ['subject' => ['type' => 'string'], 'body' => ['type' => 'string']]]
         );
         $out = $res['data'] ?? null;
@@ -250,7 +248,7 @@ class ConversionAssistantService
         }
 
         // Guardrails: word limit and no number that is not in the facts/CTA
-        $allowedText = implode(' ', $allowedFacts) . ' ' . $cta . ' ' . $agency['name'] . ' ' . $greeting;
+        $allowedText = implode(' ', $allowedFacts) . ' ' . $cta . ' ' . \App\Models\OutreachSetting::current()->signature() . ' ' . $greeting;
         preg_match_all('/\d+(?:[.,]\d+)*/', $allowedText, $okNums);
         $allowedSet = array_flip($okNums[0]);
         preg_match_all('/\d+(?:[.,]\d+)*/', $out['body'] . ' ' . $out['subject'], $nums);
@@ -262,7 +260,7 @@ class ConversionAssistantService
             }
         }
         if (!str_contains($out['body'], (string) $agency['name'])) {
-            $out['body'] = rtrim($out['body']) . "\n\n" . $agency['sender_name'] . "\n" . $agency['name']; // models drop the signature; never send without it
+            $out['body'] = rtrim($out['body']) . "\n\n" . \App\Models\OutreachSetting::current()->signature(); // models drop the signature; never send without it
         }
         if ($this->words($out['body'], true) > $limit) {
             return null;
@@ -314,11 +312,11 @@ class ConversionAssistantService
         $name = ($lead->contact_status === 'identified' && $lead->first_name) ? $lead->first_name : (($c?->name ?? '') . ' team');
         $facts = $this->facts($lead);
         $offer = $this->offers->recommend($lead, 1)[0] ?? null;
-        $agency = config('leadpilot.agency');
-        $sig = "\n\n{$agency['sender_name']}";
+        $settings = \App\Models\OutreachSetting::current();
+        $sig = "\n\n" . $settings->signature();
 
         $draft = match ($touches) {
-            1 => "Hi {$name},\n\nBumping this up in case it got buried." . (isset($facts[1]) ? " One more thing I noticed: {$facts[1]['text']}." : '') . "\n\nWorth a quick look?{$sig}",
+            1 => "Hi {$name},\n\nBumping this up in case it got buried." . (isset($facts[1]) ? " One more thing I noticed: {$facts[1]['text']}." : '') . "\n\n" . $settings->ctaLine(($facts[0]['source'] ?? null) === 'website_audit') . $sig,
             2 => "Hi {$name},\n\nI put the issues I found into a short list with what I'd fix first. Want me to send it over? No cost, no obligation.{$sig}",
             3 => "Hi {$name},\n\nIf " . ($offer ? strtolower($offer['label']) : 'this') . " isn't a priority right now, no problem — is there someone else I should speak to, or a better time to check back?{$sig}",
             default => "Hi {$name},\n\nI'll close the loop here and won't email again. If things change, just reply to this thread.{$sig}",

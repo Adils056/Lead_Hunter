@@ -26,7 +26,7 @@
                 <option value="dismissed" {{ $status == 'dismissed' ? 'selected' : '' }}>Dismissed</option>
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Signal Categories</option>
                 @foreach($signalTypes as $sKey => $sLabel)
@@ -34,25 +34,23 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-md-3">
-            <select name="service" class="form-select form-select-sm" onchange="this.form.submit()">
+        <div class="col-md-2">
+            <select name="service" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Service">
                 <option value="">All Agency Services</option>
-                @foreach([
-                    'Laravel and PHP development',
-                    'ERP and CRM development',
-                    'Custom software development',
-                    'E-commerce development',
-                    'API development and integration',
-                    'SaaS product development',
-                    'Database design, optimization, and system integrations'
-                ] as $srv)
-                    <option value="{{ $srv }}" {{ $service == $srv ? 'selected' : '' }}>{{ $srv }}</option>
+                @foreach($services as $key => $label)
+                    <option value="{{ $key }}" @selected($service === $key)>{{ $label }}</option>
                 @endforeach
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="country" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Country">
+                <option value="">All countries</option>
+                @foreach($countries as $c)<option value="{{ $c }}" @selected($country === $c)>{{ $c }}</option>@endforeach
             </select>
         </div>
         <div class="col-md-2 d-flex gap-2">
             <button type="submit" class="btn btn-sm btn-light border w-100"><i class="bi bi-funnel me-1"></i>Filter</button>
-            @if($status !== 'all' || $type || $service)
+            @if($status !== 'all' || $type || $service || $country)
                 <a href="{{ route('buying-signals.index') }}" class="btn btn-sm btn-light border text-danger"><i class="bi bi-x-lg"></i></a>
             @endif
         </div>
