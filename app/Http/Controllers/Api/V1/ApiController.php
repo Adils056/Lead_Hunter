@@ -31,7 +31,7 @@ class ApiController extends Controller
             'data' => [
                 'total_companies' => Company::count(),
                 'total_leads' => Lead::count(),
-                'qualified_leads' => Lead::where('overall_score', '>=', 60)->count(),
+                'qualified_leads' => Lead::where('overall_score', '>=', \App\Support\ScoreBands::qualified())->count(),
                 'running_campaigns' => Campaign::where('status', 'running')->count(),
                 'buying_signals_active' => BuyingSignal::where('verification_status', 'verified')->count(),
             ]

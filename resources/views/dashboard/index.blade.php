@@ -44,8 +44,8 @@
         <div class="col-md-3">
             <select name="service" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Agency Services</option>
-                @foreach($servicesList as $s)
-                    <option value="{{ $s }}" {{ $service == $s ? 'selected' : '' }}>{{ $s }}</option>
+                @foreach($servicesList as $slug => $label)
+                    <option value="{{ $slug }}" {{ $service == $slug ? 'selected' : '' }}>{{ $label }}</option>
                 @endforeach
             </select>
         </div>

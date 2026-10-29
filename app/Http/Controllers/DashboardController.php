@@ -54,7 +54,7 @@ class DashboardController extends Controller
         $totalCompanies = (clone $companyQuery)->count();
         $totalContacts = (clone $leadQuery)->count();
         $newlyDiscovered = (clone $leadQuery)->where('lifecycle_stage', 'new')->count();
-        $qualifiedLeads = (clone $leadQuery)->where('overall_score', '>=', 60)->count();
+        $qualifiedLeads = (clone $leadQuery)->where('overall_score', '>=', \App\Support\ScoreBands::qualified())->count();
         $highPriorityLeads = (clone $leadQuery)->where('overall_score', '>=', \App\Support\ScoreBands::high())->count();
         $leadsAwaitingReview = (clone $leadQuery)->whereIn('lifecycle_stage', ['ready_for_review', 'researching'])->count();
         // Only mailbox-level proof (SMTP probe or Hunter) counts; MX-only addresses are shown separately.
@@ -63,11 +63,21 @@ class DashboardController extends Controller
 
         // Campaign & Delivery Metrics
         $runningCampaigns = Campaign::where('status', 'running')->where('emergency_stopped', false)->count();
-        $emailsSent = CampaignRecipient::whereIn('status', ['sent', 'delivered', 'replied'])->count();
-        $emailsDelivered = CampaignRecipient::whereIn('status', ['delivered', 'replied'])->count();
-        $emailsBounced = CampaignRecipient::where('status', 'bounced')->count();
-        $repliesReceived = InboundReply::count();
-        $positiveReplies = InboundReply::whereIn('classification', ['positive', 'meeting_request'])->count();
+        // one definition for every page (App\Support\OutreachMetrics); the country / service filters apply here too
+        $m = \App\Support\OutreachMetrics::summary($dateRange !== 'all' ? now()->subDays((int) $dateRange) : null,
+            ($country || $service) ? function ($q) use ($country, $service) {
+                if ($country) {
+                    $q->where('country', $country);
+                }
+                if ($service) {
+                    $q->whereJsonContains('relevant_services', $service);
+                }
+            } : null);
+        $emailsSent = $m['sent'];
+        $emailsDelivered = $m['delivered'];
+        $emailsBounced = $m['bounced'];
+        $repliesReceived = $m['replied'];
+        $positiveReplies = $m['positive'];
 
         // CRM Metrics
         $meetingsBooked = Meeting::count();
@@ -77,10 +87,10 @@ class DashboardController extends Controller
         $pipelineValue = Deal::whereIn('stage', ['discovery', 'proposal_sent', 'negotiation'])->sum('value');
 
         // Rates (with safe division-by-zero handling)
-        $deliveryRate = $emailsSent > 0 ? round(($emailsDelivered / $emailsSent) * 100, 1) : 0;
-        $bounceRate = $emailsSent > 0 ? round(($emailsBounced / $emailsSent) * 100, 1) : 0;
-        $replyRate = $emailsDelivered > 0 ? round(($repliesReceived / $emailsDelivered) * 100, 1) : 0;
-        $positiveReplyRate = $repliesReceived > 0 ? round(($positiveReplies / $repliesReceived) * 100, 1) : 0;
+        $deliveryRate = $m['delivery_rate'];
+        $bounceRate = $m['bounce_rate'];
+        $replyRate = $m['reply_rate'];
+        $positiveReplyRate = $m['positive_rate'];
         $leadToMeetingRate = $totalContacts > 0 ? round(($meetingsBooked / $totalContacts) * 100, 1) : 0;
 
         // Cost per qualified lead (Total usage cost / qualified leads)
@@ -97,19 +107,8 @@ class DashboardController extends Controller
 
         // Country distribution
         $countriesList = Lead::whereNotNull('country')->distinct()->pluck('country');
-        $servicesList = [
-            'Website design and development',
-            'E-commerce development',
-            'Custom software development',
-            'Laravel and PHP development',
-            'ERP and CRM development',
-            'API development and integration',
-            'SaaS product development',
-            'Mobile application development',
-            'AI automation and business workflow automation',
-            'Database design, optimization, and system integrations',
-            'Software maintenance and technical consulting',
-        ];
+        // value = the service key stored on leads, label = its name (the filter used to send the label and match nothing)
+        $servicesList = collect(config('leadpilot.services'))->map(fn ($d) => $d['label'])->all();
 
         // Recent Activity & Signals
         $recentSignals = BuyingSignal::with('company')->latest()->limit(5)->get();

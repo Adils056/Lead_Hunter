@@ -42,7 +42,7 @@
     </div>
     <div class="col-6 col-md-4 col-xl-2">
         <div class="card-lp p-3 text-center">
-            <div class="text-muted small fw-semibold text-uppercase">Qualified (60+)</div>
+            <div class="text-muted small fw-semibold text-uppercase">Qualified ({{ \App\Support\ScoreBands::qualified() }}+)</div>
             <div class="fs-4 fw-bold mt-1 text-primary">{{ $qualifiedLeads }}</div>
             <div class="small text-primary fw-semibold">{{ $qualificationRate }}% Rate</div>
         </div>

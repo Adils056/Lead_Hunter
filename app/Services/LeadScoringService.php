@@ -281,7 +281,12 @@ class LeadScoringService
             'score_explanation' => implode(' ', $reasons),
             'score_breakdown' => $breakdown,
             'scored_at' => now(),
-            'lifecycle_stage' => ($stage === 'new' && in_array($priority, ['high', 'qualified'], true)) ? 'qualified' : $stage,
+            // the stage follows the score both ways while scoring is what set it (SQA bug 11: "Qualified" at 53)
+            'lifecycle_stage' => match (true) {
+                $stage === 'new' && in_array($priority, ['high', 'qualified'], true) => 'qualified',
+                $stage === 'qualified' && !in_array($priority, ['high', 'qualified'], true) => 'new',
+                default => $stage,
+            },
         ]);
 
         return LeadScore::create([
