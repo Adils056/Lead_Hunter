@@ -38,14 +38,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Company</label>
-                        <select name="company_id" class="form-select">
-                            <option value="">Select Company (or leave unassigned)...</option>
-                            @foreach($companies as $comp)
-                                <option value="{{ $comp->id }}" {{ old('company_id', request('company_id')) == $comp->id ? 'selected' : '' }}>
-                                    {{ $comp->name }} ({{ $comp->country }})
-                                </option>
-                            @endforeach
-                        </select>
+                        <x-company-picker :selected="$selectedCompany" empty-label="Select Company (or leave unassigned)..." />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Lead Source</label>

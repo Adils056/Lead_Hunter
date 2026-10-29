@@ -42,6 +42,7 @@ Route::middleware(['auth'])->group(function () {
 
     // Companies
     Route::get('/companies/export', [CompanyController::class, 'export'])->name('companies.export');
+    Route::get('/companies/lookup', [CompanyController::class, 'lookup'])->name('companies.lookup');
     Route::post('/companies/{company}/research', [CompanyController::class, 'triggerAiResearch'])->name('companies.research');
     Route::resource('companies', CompanyController::class)->except(['destroy']);
 

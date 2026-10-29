@@ -129,7 +129,7 @@
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Max Sends Per Recipient</label>
                         <input type="number" name="max_sends_per_recipient" class="form-control" value="{{ old('max_sends_per_recipient', $settings->max_sends_per_recipient) }}" min="1" max="5" required>
-                        <div class="form-text">Prevents over-messaging the same contact.</div>
+                        <div class="form-text">Total emails one contact can get: first email + follow-ups must fit inside this.</div>
                     </div>
                 </div>
 
@@ -160,7 +160,9 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Max Follow-Ups</label>
-                        <input type="number" name="max_follow_ups" class="form-control" value="{{ old('max_follow_ups', $settings->max_follow_ups) }}" min="0" max="5" required>
+                        <input type="number" name="max_follow_ups" class="form-control @error('max_follow_ups') is-invalid @enderror" value="{{ old('max_follow_ups', $settings->max_follow_ups) }}" min="0" max="5" required>
+                        @error('max_follow_ups')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">Each sequence sends {{ $settings->maxTouches() }} email(s) in total.</div>
                     </div>
                 </div>
             </div>

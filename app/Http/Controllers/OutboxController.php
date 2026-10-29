@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CampaignRecipient;
 use App\Models\InboundReply;
+use App\Support\Like;
 use Illuminate\Http\Request;
 
 /** Sent & Replies: every e-mail that actually went out, to whom, and what came back. */
@@ -12,9 +13,9 @@ class OutboxController extends Controller
     public function index(Request $request)
     {
         $tab = $request->query('tab') === 'replies' ? 'replies' : 'sent';
-        $q = trim((string) $request->query('q', ''));
-        $match = fn ($w) => $w->where('email', 'like', "%{$q}%")->orWhere('full_name', 'like', "%{$q}%")
-            ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
+        $q = Like::term($request->query('q'));
+        $match = fn ($w) => Like::where(Like::where($w, 'email', $q), 'full_name', $q, 'or')
+            ->orWhereHas('company', fn ($c) => Like::where($c, 'name', $q));
 
         $m = \App\Support\OutreachMetrics::summary(); // same numbers as Dashboard / Analytics
         $stats = [
@@ -27,12 +28,12 @@ class OutboxController extends Controller
 
         if ($tab === 'replies') {
             $items = InboundReply::with(['lead.company', 'recipient'])
-                ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('from_email', 'like', "%{$q}%")->orWhere('subject', 'like', "%{$q}%")->orWhereHas('lead', $match)))
+                ->when($q !== '', fn ($w) => $w->where(fn ($x) => Like::where(Like::where($x, 'from_email', $q), 'subject', $q, 'or')->orWhereHas('lead', $match)))
                 ->latest('received_at')->paginate(25)->withQueryString();
         } else {
             $items = CampaignRecipient::with(['lead.company', 'replies' => fn ($r) => $r->latest('received_at')])
                 ->whereNotNull('sent_at')
-                ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('personalized_subject', 'like', "%{$q}%")->orWhereHas('lead', $match)))
+                ->when($q !== '', fn ($w) => $w->where(fn ($x) => Like::where($x, 'personalized_subject', $q)->orWhereHas('lead', $match)))
                 ->latest('sent_at')->paginate(25)->withQueryString();
         }
 

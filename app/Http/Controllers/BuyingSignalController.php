@@ -58,10 +58,10 @@ class BuyingSignalController extends Controller
 
     public function create(Request $request)
     {
-        $companies = Company::orderBy('name')->get();
         $preselectedCompanyId = $request->query('company_id');
+        $selectedCompany = Company::find(old('company_id', $preselectedCompanyId));
 
-        return view('buying_signals.create', compact('companies', 'preselectedCompanyId'));
+        return view('buying_signals.create', compact('selectedCompany', 'preselectedCompanyId'));
     }
 
     public function store(Request $request)

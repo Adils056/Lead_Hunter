@@ -42,7 +42,7 @@
                 <span class="rounded-circle bg-{{ $meta['color'] }}" style="width: 10px; height: 10px;"></span>
                 <span class="fw-bold text-dark small">{{ $meta['label'] }}</span>
             </div>
-            <span class="badge bg-light text-secondary border small">{{ $leadsInStage->count() }}</span>
+            <span class="badge bg-light text-secondary border small">{{ number_format($stageTotals[$stageKey] ?? 0) }}</span>
         </div>
 
         <!-- Column Body -->
@@ -53,29 +53,17 @@
                     <span class="badge-lp {{ \App\Support\ScoreBands::badgeClass($lead->overall_score) }}">
                         {{ $lead->overall_score }} pts
                     </span>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-light py-0 px-1 text-muted border-0" data-bs-toggle="dropdown">
-                            <i class="bi bi-three-dots-vertical"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end small shadow-sm">
-                            <li><h6 class="dropdown-header small">Move to Stage</h6></li>
+                    <form action="{{ route('crm.pipeline.stage', $lead) }}" method="POST" class="m-0">
+                        @csrf
+                        <select name="lifecycle_stage" class="form-select form-select-sm py-0 border-0 bg-light text-muted" style="width: auto; font-size: 0.72rem;" onchange="this.form.submit()" aria-label="Move to stage">
+                            <option value="" selected disabled>Move to…</option>
                             @foreach($pipelineStages as $targetKey => $targetMeta)
                                 @if($targetKey !== $stageKey)
-                                <li>
-                                    <form action="{{ route('crm.pipeline.stage', $lead) }}" method="POST">
-                                        @csrf
-                                        <input type="hidden" name="lifecycle_stage" value="{{ $targetKey }}">
-                                        <button type="submit" class="dropdown-item py-1">
-                                            {{ $targetMeta['label'] }}
-                                        </button>
-                                    </form>
-                                </li>
+                                <option value="{{ $targetKey }}">{{ $targetMeta['label'] }}</option>
                                 @endif
                             @endforeach
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ route('leads.show', $lead) }}"><i class="bi bi-eye me-1"></i>View Profile</a></li>
-                        </ul>
-                    </div>
+                        </select>
+                    </form>
                 </div>
 
                 <a href="{{ route('leads.show', $lead) }}" class="fw-bold text-dark text-decoration-none d-block fs-6 mb-1">
@@ -107,6 +95,17 @@
                 No prospects in this stage
             </div>
             @endforelse
+            @php $hidden = ($stageTotals[$stageKey] ?? 0) - $leadsInStage->count(); @endphp
+            @if($hidden > 0)
+            <div class="d-flex justify-content-between small px-1">
+                @if($expand !== $stageKey)
+                    <a href="{{ request()->fullUrlWithQuery(['expand' => $stageKey]) }}" class="text-decoration-none">Show more</a>
+                @else
+                    <span class="text-muted">Top {{ $leadsInStage->count() }}</span>
+                @endif
+                <a href="{{ route('leads.index', array_filter(['stage' => $stageKey, 'country' => $country, 'assigned_to' => $assignedTo])) }}" class="text-decoration-none">View all {{ number_format($stageTotals[$stageKey]) }} →</a>
+            </div>
+            @endif
         </div>
     </div>
     @endforeach

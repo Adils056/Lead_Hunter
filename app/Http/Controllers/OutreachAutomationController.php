@@ -80,6 +80,12 @@ class OutreachAutomationController extends Controller
             'approved_services' => ['nullable', 'array'],
         ]);
 
+        if ($data['max_follow_ups'] > $data['max_sends_per_recipient'] - 1) {
+            return back()->withInput()->withErrors(['max_follow_ups' => "First email + {$data['max_follow_ups']} follow-ups = " . ($data['max_follow_ups'] + 1)
+                . " emails, but Max Sends Per Recipient is {$data['max_sends_per_recipient']}. Raise Max Sends to " . ($data['max_follow_ups'] + 1)
+                . ' or lower Max Follow-Ups to ' . max(0, $data['max_sends_per_recipient'] - 1) . '.']);
+        }
+
         $settings = OutreachSetting::current();
         $data['require_verified_email'] = $request->has('require_verified_email');
         $data['allow_shared_inbox'] = $request->has('allow_shared_inbox');
