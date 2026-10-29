@@ -40,8 +40,9 @@ Artisan::command('leadpilot:dispatch-campaigns', function (CampaignDeliveryServi
             continue;
         }
 
-        $recipients = $campaign->recipients()
-            ->where('status', 'approved')
+        // 'queued' = held by yesterday's daily quota; it is approved work and must go out once due (it used to be stranded)
+        $recipients = $campaign->recipients()->with('lead')
+            ->whereIn('status', ['approved', 'queued'])
             ->where(function ($q) {
                 $q->whereNull('scheduled_at')
                   ->orWhere('scheduled_at', '<=', now());
@@ -49,7 +50,16 @@ Artisan::command('leadpilot:dispatch-campaigns', function (CampaignDeliveryServi
             ->limit($campaign->daily_limit - $campaign->sent_today)
             ->get();
 
+        $sequence = app(\App\Services\Outreach\SequenceEngine::class);
         foreach ($recipients as $recipient) {
+            // SQA bug 5: the same rules as autopilot — the prospect's own working hours, one conversation per company
+            if (!$sequence->inSendingWindow(null, $recipient->lead)) {
+                continue; // stays approved; goes out when the prospect's working day starts
+            }
+            if ($why = $sequence->companyConflict($recipient)) {
+                $this->line("  [HELD] Recipient #{$recipient->id}: {$why}");
+                continue;
+            }
             $success = $deliveryService->dispatchRecipient($recipient, true); // scheduled send = automated (dry-run enforced)
             if ($success) {
                 $totalDispatched++;

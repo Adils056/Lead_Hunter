@@ -309,7 +309,7 @@ class SequenceEngine
      * usable address (the founder gets the conversation, not info@); a first email to a second person waits until
      * `company_gap_days` after the company's last email (rescheduled, never dropped). Null = may send now.
      */
-    protected function companyConflict(CampaignRecipient $rec): ?string
+    public function companyConflict(CampaignRecipient $rec): ?string
     {
         $lead = $rec->lead;
         if (!$lead || !$lead->company_id) {

@@ -36,6 +36,10 @@ class Notifier
 
         $result = ['user' => $user->id];
         try {
+            // SQA bug 7: a reminder replaces the earlier unread entry for the same approval instead of stacking a copy
+            if (!empty($payload['approval_id'])) {
+                $this->retire((int) $payload['approval_id'], $user, true);
+            }
             $user->notify(new ActionRequired($payload));
             NotificationDelivery::create(['user_id' => $user->id, 'channel' => 'database', 'dedupe_key' => $dedupeKey, 'status' => 'stored', 'subject_ref' => mb_substr($payload['title'] ?? '', 0, 120)]);
             $result['database'] = 'stored';
@@ -58,5 +62,20 @@ class Notifier
         }
 
         return $result;
+    }
+
+    /** Clear the in-app entries of one approval: deleted when a reminder replaces them, marked read once it is decided. */
+    public function retire(int $approvalId, ?User $only = null, bool $delete = false): void
+    {
+        $q = \Illuminate\Notifications\DatabaseNotification::whereNull('read_at')->where('type', ActionRequired::class)
+            ->where('notifiable_type', (new User())->getMorphClass());
+        if ($only) {
+            $q->where('notifiable_id', $only->id);
+        }
+        // filtered in PHP: the data column is plain TEXT, so a JSON path query is not portable across MySQL/MariaDB/SQLite
+        $mine = $q->get()->filter(fn ($n) => (int) ($n->data['approval_id'] ?? 0) === $approvalId);
+        foreach ($mine as $n) {
+            $delete ? $n->delete() : $n->markAsRead();
+        }
     }
 }
