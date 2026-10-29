@@ -218,7 +218,7 @@ return [
             'timeout' => 15,
             'max_internal_links_checked' => 15,
             'contact_paths' => ['/contact', '/contact-us', '/about', '/about-us', '/team', '/our-team'],
-            'max_pages' => 4, // homepage + 3 of the paths above (first ones that exist)
+            'max_pages' => 5, // homepage + 4 pages: team/about/contact links found on the homepage first, then the paths above
         ],
     ],
 

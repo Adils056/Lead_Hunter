@@ -14,7 +14,8 @@ class PeopleExtractor
         'owner' => 100, 'proprietor' => 100, 'founder' => 95, 'co-founder' => 95, 'ceo' => 95, 'chief executive' => 95, 'managing director' => 90,
         'president' => 85, 'principal' => 85, 'managing partner' => 85, 'partner' => 75, 'director' => 75, 'general manager' => 70, 'cto' => 70,
         'chief technology' => 70, 'coo' => 65, 'cmo' => 65, 'chief marketing' => 65, 'head of marketing' => 65, 'marketing manager' => 60,
-        'practice manager' => 60, 'clinic manager' => 60, 'office manager' => 50, 'operations manager' => 50, 'head of' => 50, 'manager' => 40,
+        'practice manager' => 60, 'clinic manager' => 60, 'office manager' => 50, 'operations manager' => 50, 'head of' => 50,
+        'attorney' => 45, 'lawyer' => 45, 'solicitor' => 45, 'barrister' => 45, 'dentist' => 40, 'manager' => 40,
     ];
 
     /** Words that make "Two Words" a heading or menu item, not a person. */
