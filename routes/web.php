@@ -139,6 +139,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/approvals/{approval}/decide', [\App\Http\Controllers\ApprovalController::class, 'decide'])->name('approvals.decide')->middleware('throttle:60,1');
 
     Route::get('/outbox', [\App\Http\Controllers\OutboxController::class, 'index'])->name('outbox.index');
+    Route::resource('templates', \App\Http\Controllers\EmailTemplateController::class)->except(['show', 'destroy'])->parameters(['templates' => 'template']);
     Route::get('/outbox/{recipient}', [\App\Http\Controllers\OutboxController::class, 'show'])->name('outbox.show');
 
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');

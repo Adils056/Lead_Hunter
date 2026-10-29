@@ -150,7 +150,7 @@ class WebsiteAuditService
         $pages = [$finalUrl => $html];
         foreach ((array) config('leadpilot.sources.website_crawler.contact_paths', []) as $path) {
             $u = $this->origin($finalUrl) . $path;
-            if (count($pages) >= 3 || !$this->robotsAllows($u)) {
+            if (count($pages) >= (int) config('leadpilot.sources.website_crawler.max_pages', 4) || !$this->robotsAllows($u)) {
                 continue;
             }
             try {
@@ -165,6 +165,17 @@ class WebsiteAuditService
         $board = null;
         foreach ($pages as $pageUrl => $body) {
             $this->extractContacts($body, $pageUrl, $domain, $contacts);
+        }
+        $people = new PeopleExtractor();
+        foreach ($pages as $pageUrl => $body) {
+            foreach ($people->extract($body, $pageUrl, array_values($contacts['emails'] ?? [])) as $p) {
+                $key = strtolower($p['name']);
+                if (!isset($contacts['people'][$key]) || ($p['email'] && !$contacts['people'][$key]['email'])) {
+                    $contacts['people'][$key] = $p;
+                }
+            }
+        }
+        foreach ($pages as $pageUrl => $body) {
             // A careers link to a public job board lets the hiring-signal source check this company's open roles.
             if (!$board && preg_match_all('#https?://[^"\'\s<>]+#i', $body, $links)) {
                 foreach ($links[0] as $link) {
@@ -571,6 +582,7 @@ class WebsiteAuditService
             'emails' => array_values($contacts['emails'] ?? []),
             'phones' => array_values($contacts['phones'] ?? []),
             'socials' => $contacts['socials'] ?? [],
+            'people' => array_values($contacts['people'] ?? []),
         ];
         $score = $this->opportunityScore($checks);
         $opps = $this->mapOpportunities($checks);
@@ -693,6 +705,8 @@ class WebsiteAuditService
             'public_phone' => $update['public_phone'] ?? null,
         ]), 'website_crawl', $best['source_url'] ?? $audit->final_url, 'crawl', 90);
 
+        $this->addNamedContact($company, $audit);
+
         // Give contact-less leads the PUBLIC business inbox printed on the site (never a guessed address).
         if ($best) {
             Lead::where('company_id', $company->id)->where('contact_status', 'needs_enrichment')->whereNull('email')->get()
@@ -704,6 +718,41 @@ class WebsiteAuditService
                     DataProvenance::record($lead, ['email' => $best['value']], 'website_crawl', $best['source_url'], 'crawl', 90);
                 });
         }
+    }
+
+    /**
+     * A decision-maker the site names together with their own published on-domain address becomes a named contact
+     * (SQA item 21). The address is unverified until the SMTP check runs, like every other address.
+     */
+    protected function addNamedContact(Company $company, WebsiteAudit $audit): ?Lead
+    {
+        $person = collect($audit->contacts_found['people'] ?? [])->first(fn ($p) => !empty($p['email']));
+        if (!$person || Lead::where('email', $person['email'])->exists()) {
+            return null;
+        }
+        $sibling = Lead::where('company_id', $company->id)->orderBy('id')->first();
+        $lead = Lead::create([
+            'company_id' => $company->id,
+            'icp_profile_id' => $sibling?->icp_profile_id,
+            'first_name' => $person['first_name'],
+            'last_name' => $person['last_name'],
+            'job_title' => $person['role'],
+            'email' => $person['email'],
+            'phone' => $company->public_phone,
+            'contact_status' => 'identified',
+            'country' => $company->country,
+            'industry' => $company->industry,
+            'source_name' => 'Company website (team / about page)',
+            'source_url' => $person['source_url'],
+            'discovery_date' => now(),
+            'relevant_services' => $sibling?->relevant_services,
+            'email_verification_status' => 'unverified',
+            'lifecycle_stage' => 'new',
+        ]);
+        DataProvenance::record($lead, ['first_name' => $person['first_name'], 'last_name' => $person['last_name'], 'job_title' => $person['role'], 'email' => $person['email']],
+            'website_crawl', $person['source_url'], 'crawl', 85);
+
+        return $lead;
     }
 
     /** Replace this company's previous audit-derived signal with the current evidence. */

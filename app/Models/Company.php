@@ -15,11 +15,24 @@ class Company extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        // the short, fixed industry list used by filters and reports (raw category stays in `industry`)
+        static::saving(function (Company $c) {
+            static $hasColumn = null; // the code can be pulled a minute before `migrate` adds the column
+            $hasColumn ??= \Illuminate\Support\Facades\Schema::hasColumn('companies', 'industry_group');
+            if ($hasColumn && ($c->isDirty('industry') || ($c->industry && !$c->industry_group))) {
+                $c->industry_group = \App\Support\Industry::group($c->industry);
+            }
+        });
+    }
+
     protected $fillable = [
         'name',
         'website',
         'domain',
         'industry',
+        'industry_group',
         'country',
         'city',
         'size_range',

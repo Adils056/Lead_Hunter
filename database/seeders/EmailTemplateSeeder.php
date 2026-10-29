@@ -32,7 +32,7 @@ class EmailTemplateSeeder extends Seeder
             [
                 'name' => 'Custom ERP & CRM Solutions',
                 'slug' => 'custom-erp-crm',
-                'service_category' => 'erp_crm',
+                'service_category' => 'erp_pos',
                 'subject' => 'Streamlining internal operations & workflow automation for {{company_name}}',
                 'body_html' => '<p>Hello {{first_name}},</p>
 <p>Off-the-shelf software often forces businesses into rigid workflows that don\'t match how teams actually operate. We design and engineer tailored ERP and CRM systems built around your company\'s exact operational models, invoicing pipelines, and inventory workflows.</p>
@@ -79,7 +79,7 @@ class EmailTemplateSeeder extends Seeder
             [
                 'name' => 'SaaS Product Development & MVP Build',
                 'slug' => 'saas-product-development',
-                'service_category' => 'saas_dev',
+                'service_category' => 'saas_mvp',
                 'subject' => 'Architecting {{company_name}}\'s next software release',
                 'body_html' => '<p>Hi {{first_name}},</p>
 <p>Taking a SaaS product from concept to production-ready scale requires battle-tested architecture: clean multi-tenancy, Stripe subscription billing, robust queue workers, role permissions, and airtight security.</p>

@@ -83,7 +83,7 @@
                         @endif
                     </td>
                     <td>
-                        <div class="text-dark fw-semibold small">{{ $company->industry ?: 'General' }}</div>
+                        <div class="text-dark fw-semibold small" title="{{ $company->industry }}">{{ $company->industry_group ?: 'General' }}@if($company->industry && $company->industry !== $company->industry_group) <span class="text-muted fw-normal">· {{ $company->industry }}</span>@endif</div>
                         <div class="text-muted small"><i class="bi bi-geo-alt me-1"></i>{{ $company->city ? $company->city . ', ' : '' }}{{ $company->country }}</div>
                     </td>
                     <td>

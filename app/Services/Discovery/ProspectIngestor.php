@@ -53,6 +53,13 @@ class ProspectIngestor
             $domain = Company::domainFromEmail($data['public_email']);
         }
 
+        if (\App\Support\Industry::isNotABusiness($data['industry'] ?? null)) {
+            $reason = 'Not a trading business (' . $data['industry'] . ').';
+            $result->excludedCount++;
+            $result->recordItem(['company' => $name, 'excluded' => $reason]);
+
+            return ['company' => null, 'created' => false, 'excluded' => $reason];
+        }
         if (($reason = \App\Support\ChainBrand::reason($name, $domain))
             || ($this->icp && ($reason = $this->icp->exclusionReason($domain, $name, $data['description'] ?? null)))) {
             $result->excludedCount++;

@@ -206,9 +206,9 @@ class EligibilityGateService
 
         // 10. Approved Template and Truthful Personalization Check
         if ($campaign && ($campaign->template || $campaign->is_autopilot)) {
-            $approvedServices = $settings->approved_services ?: [];
+            $approvedServices = array_map([\App\Support\ServiceCatalog::class, 'normalize'], $settings->approved_services ?: []);
 
-            if (!empty($campaign->service_offered) && !empty($approvedServices) && !in_array($campaign->service_offered, $approvedServices)) {
+            if (!empty($campaign->service_offered) && !empty($approvedServices) && !in_array(\App\Support\ServiceCatalog::normalize($campaign->service_offered), $approvedServices)) {
                 $serviceLower = strtolower($campaign->service_offered);
                 $found = false;
                 foreach ($approvedServices as $appr) {

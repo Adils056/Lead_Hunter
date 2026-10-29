@@ -45,7 +45,7 @@ trait ProcessesOcdsReleases
             'public_email' => $cp['email'] ?? null,
             'public_phone' => $cp['telephone'] ?? null,
             'city' => $party['address']['locality'] ?? null,
-            'country' => $country,
+            'country' => \App\Support\Country::fromAddress((array) ($party['address'] ?? []), $country), // the buyer's address, not the portal
             'industry' => 'Public Sector',
             'source_url' => $noticeUrl,
             'confidence' => 95,

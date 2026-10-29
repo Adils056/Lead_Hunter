@@ -97,7 +97,7 @@ class OutreachSetting extends Model
                 'mobile_app',
                 'ai_automation',
                 'database_optimization',
-                'maintenance_support',
+                'maintenance',
             ],
             'min_lead_score' => \App\Support\ScoreBands::qualified(),
             'min_evidence_confidence' => 65,

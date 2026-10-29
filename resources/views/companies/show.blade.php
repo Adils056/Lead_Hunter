@@ -222,6 +222,26 @@
         </div>
 
         <!-- Tech Stack -->
+        @php $websitePeople = $company->latestWebsiteAudit?->contacts_found['people'] ?? []; @endphp
+        @if($websitePeople)
+        <div class="card-lp p-4 mb-4">
+            <h6 class="fw-bold mb-1"><i class="bi bi-person-badge text-primary me-1"></i> Decision-makers on their website</h6>
+            <div class="text-muted small mb-3">Named on the company's own site. An email is shown only when the site publishes it.</div>
+            @foreach($websitePeople as $p)
+                <div class="d-flex justify-content-between align-items-start border-top py-2 small">
+                    <div>
+                        <div class="fw-semibold">{{ $p['name'] }}</div>
+                        <div class="text-muted">{{ $p['role'] }}</div>
+                    </div>
+                    <div class="text-end">
+                        @if(!empty($p['email']))<div>{{ $p['email'] }}</div>@endif
+                        <a href="{{ $p['source_url'] }}" target="_blank" rel="noopener noreferrer" class="text-muted">source</a>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+        @endif
+
         <div class="card-lp p-4 mb-4">
             <h6 class="fw-bold mb-3"><i class="bi bi-cpu text-info me-1"></i> Technology Stack</h6>
             @if(!empty($company->tech_stack))
