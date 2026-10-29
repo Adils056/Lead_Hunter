@@ -35,7 +35,7 @@ class LeadController extends Controller
     {
         $this->authorize('viewAny', Lead::class);
 
-        $search = $request->query('search');
+        $search = \App\Support\Like::term($request->query('search'));
         $stage = $request->query('stage');
         $country = $request->query('country');
         $verification = $request->query('verification');
@@ -46,10 +46,10 @@ class LeadController extends Controller
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('job_title', 'like', "%{$search}%")
-                  ->orWhereHas('company', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
+                \App\Support\Like::where($q, 'full_name', $search);
+                \App\Support\Like::where($q, 'email', $search, 'or');
+                \App\Support\Like::where($q, 'job_title', $search, 'or');
+                $q->orWhereHas('company', fn ($cq) => \App\Support\Like::where($cq, 'name', $search));
             });
         }
 
@@ -95,11 +95,11 @@ class LeadController extends Controller
     {
         $this->authorize('create', Lead::class);
 
-        $companies = Company::orderBy('name')->get();
+        $selectedCompany = Company::find(old('company_id', request('company_id')));
         $salesReps = User::whereIn('role', ['sales', 'admin'])->get();
         $sources = LeadSource::where('is_active', true)->get();
 
-        return view('leads.create', compact('companies', 'salesReps', 'sources'));
+        return view('leads.create', compact('selectedCompany', 'salesReps', 'sources'));
     }
 
     public function store(Request $request)
@@ -190,11 +190,11 @@ class LeadController extends Controller
     {
         $this->authorize('update', $lead);
 
-        $companies = Company::orderBy('name')->get();
+        $selectedCompany = Company::find(old('company_id', $lead->company_id));
         $salesReps = User::whereIn('role', ['sales', 'admin'])->get();
         $sources = LeadSource::where('is_active', true)->get();
 
-        return view('leads.edit', compact('lead', 'companies', 'salesReps', 'sources'));
+        return view('leads.edit', compact('lead', 'selectedCompany', 'salesReps', 'sources'));
     }
 
     public function update(Request $request, Lead $lead)
@@ -345,11 +345,11 @@ class LeadController extends Controller
     {
         $this->authorize('export', Lead::class);
 
-        $leads = Lead::with('company')->get();
+        $count = Lead::count();
         $filename = "leadpilot_leads_" . date('Y-m-d_His') . ".csv";
 
         $headers = [
-            "Content-type" => "text/csv",
+            "Content-type" => "text/csv; charset=UTF-8",
             "Content-Disposition" => "attachment; filename={$filename}",
             "Pragma" => "no-cache",
             "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
@@ -362,39 +362,54 @@ class LeadController extends Controller
             'Job Title',
             'Email',
             'Email Verification',
+            'Phone',
             'Company',
+            'Website',
             'Country',
+            'City',
             'Industry',
             'Lifecycle Stage',
             'Overall Score',
             'Priority',
+            'Score Reasons',
+            'Source',
+            'Source URL',
             'Discovery Date'
         ];
 
-        $callback = function () use ($leads, $columns) {
+        $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
+            fwrite($file, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel shows Arabic / Urdu names correctly
             fputcsv($file, $columns);
 
-            foreach ($leads as $l) {
-                fputcsv($file, [
-                    $l->id,
-                    $l->full_name,
-                    $l->job_title,
-                    $l->email,
-                    $l->email_verification_status,
-                    $l->company?->name ?? 'N/A',
-                    $l->country,
-                    $l->industry,
-                    $l->lifecycle_stage,
-                    $l->overall_score,
-                    $l->priority_badge,
-                    $l->discovery_date?->format('Y-m-d') ?? '',
-                ]);
-            }
+            Lead::with('company')->orderBy('id')->chunk(500, function ($leads) use ($file) {
+                foreach ($leads as $l) {
+                    fputcsv($file, [
+                        $l->id,
+                        $l->full_name,
+                        $l->job_title,
+                        $l->email,
+                        $l->email_verification_status,
+                        $l->phone ?: $l->company?->public_phone,
+                        $l->company?->name ?? 'N/A',
+                        $l->company?->website,
+                        $l->country,
+                        $l->company?->city,
+                        $l->industry,
+                        $l->lifecycle_stage,
+                        $l->overall_score,
+                        $l->priority_badge,
+                        \Illuminate\Support\Str::limit(preg_replace('/\s+/', ' ', (string) $l->score_explanation), 500),
+                        $l->source_name,
+                        $l->source_url,
+                        $l->discovery_date?->format('Y-m-d') ?? '',
+                    ]);
+                }
+            });
             fclose($file);
         };
 
-        AuditLog::record('leads_exported', null, null, ['count' => $leads->count()]);
+        AuditLog::record('leads_exported', null, null, ['count' => $count]);
 
         return Response::stream($callback, 200, $headers);
     }
@@ -435,6 +450,7 @@ class LeadController extends Controller
         $filename = 'leadpilot_win_ladder_' . $tier . '_' . date('Y-m-d_His') . '.csv';
         $callback = function () use ($leads, $tier) {
             $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
             fputcsv($out, ['Rung', 'Rank', 'Company', 'Website', 'City', 'Country', 'Contact', 'Job title', 'Email', 'Email status', 'Score', 'Points', 'Why', 'Blockers', 'Next action']);
             foreach ($leads as $i => $l) {
                 fputcsv($out, [$tier, $i + 1, $l->company?->name, $l->company?->website, $l->company?->city, $l->country, $l->full_name, $l->job_title, $l->email,

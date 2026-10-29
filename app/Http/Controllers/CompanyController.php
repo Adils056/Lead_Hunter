@@ -23,7 +23,7 @@ class CompanyController extends Controller
     {
         $this->authorize('viewAny', Company::class);
 
-        $search = $request->query('search');
+        $search = \App\Support\Like::term($request->query('search'));
         $country = $request->query('country');
         $industry = $request->query('industry');
         $size = $request->query('size');
@@ -40,9 +40,9 @@ class CompanyController extends Controller
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('domain', 'like', "%{$search}%")
-                  ->orWhere('city', 'like', "%{$search}%");
+                \App\Support\Like::where($q, 'name', $search);
+                \App\Support\Like::where($q, 'domain', $search, 'or');
+                \App\Support\Like::where($q, 'city', $search, 'or');
             });
         }
 
@@ -214,6 +214,32 @@ class CompanyController extends Controller
         return back()->with('success', $message);
     }
 
+    /** JSON for the company search field: at most 20 matches by name or domain. */
+    public function lookup(Request $request)
+    {
+        $this->authorize('viewAny', Company::class);
+        $q = \App\Support\Like::term($request->query('q'));
+        if (mb_strlen($q) < 2) {
+            return response()->json([]);
+        }
+
+        return response()->json(Company::where('status', '!=', 'archived')
+            ->where(function ($w) use ($q) {
+                \App\Support\Like::where($w, 'name', $q);
+                \App\Support\Like::where($w, 'domain', $q, 'or');
+            })
+            ->orderBy('name')->limit(20)->get(['id', 'name', 'domain', 'city', 'country'])
+            ->map(fn (Company $c) => ['id' => $c->id, 'label' => self::lookupLabel($c)])->values());
+    }
+
+    /** "Name — City, Country · domain" so branches with the same name can be told apart. */
+    public static function lookupLabel(Company $c): string
+    {
+        $where = implode(', ', array_filter([$c->city, $c->country]));
+
+        return $c->name . ($where ? " — {$where}" : '') . ($c->domain ? " · {$c->domain}" : '');
+    }
+
     public function export(Request $request)
     {
         $this->authorize('export', Company::class);
@@ -222,7 +248,7 @@ class CompanyController extends Controller
         $filename = "leadpilot_companies_" . date('Y-m-d_His') . ".csv";
 
         $headers = [
-            "Content-type" => "text/csv",
+            "Content-type" => "text/csv; charset=UTF-8",
             "Content-Disposition" => "attachment; filename={$filename}",
             "Pragma" => "no-cache",
             "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
@@ -233,6 +259,7 @@ class CompanyController extends Controller
 
         $callback = function () use ($companies, $columns) {
             $file = fopen('php://output', 'w');
+            fwrite($file, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel shows Arabic / Urdu names correctly
             fputcsv($file, $columns);
 
             foreach ($companies as $comp) {

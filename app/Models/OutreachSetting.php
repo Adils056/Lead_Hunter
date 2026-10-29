@@ -110,7 +110,7 @@ class OutreachSetting extends Model
             'sending_window_end' => '18:00',
             'sending_timezone' => 'Asia/Karachi',
             'follow_up_delay_days' => 3,
-            'max_follow_ups' => 2,
+            'max_follow_ups' => 1, // first email + 1 follow-up = max_sends_per_recipient
             'emergency_stop' => false,
         ]);
     }
@@ -158,5 +158,14 @@ class OutreachSetting extends Model
         $endTime = Carbon::createFromTimeString($this->sending_window_end, $tz);
 
         return $now->between($startTime, $endTime);
+    }
+
+    /**
+     * Emails one prospect can receive in a sequence: the first touch plus follow-ups, never more than
+     * "Max sends per recipient" (the send-time gate blocks anything above it anyway).
+     */
+    public function maxTouches(): int
+    {
+        return max(1, min((int) config('leadpilot.outreach.max_touches', 5), 1 + (int) ($this->max_follow_ups ?? 4), (int) ($this->max_sends_per_recipient ?: 5)));
     }
 }

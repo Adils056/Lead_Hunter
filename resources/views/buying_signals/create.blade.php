@@ -22,14 +22,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Target Company <span class="text-danger">*</span></label>
-                        <select name="company_id" class="form-select" required>
-                            <option value="">Select Company...</option>
-                            @foreach($companies as $comp)
-                                <option value="{{ $comp->id }}" {{ old('company_id', $preselectedCompanyId) == $comp->id ? 'selected' : '' }}>
-                                    {{ $comp->name }} ({{ $comp->country }})
-                                </option>
-                            @endforeach
-                        </select>
+                        <x-company-picker :selected="$selectedCompany" empty-label="Select Company..." :required="true" />
                     </div>
 
                     <div class="col-md-6">

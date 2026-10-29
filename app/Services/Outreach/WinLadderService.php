@@ -209,7 +209,7 @@ class WinLadderService
             $days = (int) Carbon::parse($lead->last_contacted_at)->diffInDays(now());
             $delay = (int) ($settings->follow_up_delay_days ?? 3);
             $sent = $lead->exists ? $lead->campaignRecipients()->where('status', 'sent')->count() : 0;
-            $maxTouches = min((int) config('leadpilot.outreach.max_touches', 5), 1 + (int) ($settings->max_follow_ups ?? 4));
+            $maxTouches = $settings->maxTouches();
             if ($sent >= $maxTouches) {
                 return $this->rung('C', $points, $reasons, ["Sequence finished: {$sent} emails, no reply"], 'Stop emailing. Re-engage only when a new trigger appears (new audit finding, hiring, tender).');
             }

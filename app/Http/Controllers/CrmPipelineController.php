@@ -14,21 +14,18 @@ use Illuminate\Support\Facades\Auth;
 
 class CrmPipelineController extends Controller
 {
+    public const CARDS_PER_COLUMN = 20;
+
+    public const EXPANDED_CARDS = 100;
+
     public function index(Request $request)
     {
         $assignedTo = $request->query('assigned_to');
         $country = $request->query('country');
 
-        $query = Lead::with(['company', 'assignedUser', 'deals', 'tasks']);
-
-        if ($assignedTo) {
-            $query->where('assigned_user_id', $assignedTo);
-        }
-        if ($country) {
-            $query->where('country', $country);
-        }
-
-        $allLeads = $query->orderByDesc('overall_score')->get();
+        $base = Lead::query()
+            ->when($assignedTo, fn ($q) => $q->where('assigned_user_id', $assignedTo))
+            ->when($country, fn ($q) => $q->where('country', $country));
 
         $pipelineStages = [
             'new' => ['label' => 'New Leads', 'color' => 'secondary'],
@@ -45,15 +42,23 @@ class CrmPipelineController extends Controller
             'lost' => ['label' => 'Deals Lost', 'color' => 'danger'],
         ];
 
+        // Top cards per column only (the board used to render all ~3,000 leads, 32 MB of HTML);
+        // "Show more" on a column raises its limit, "View all" opens the paginated leads list.
+        $expand = is_string($request->query('expand')) ? $request->query('expand') : null;
+        $stageTotals = (clone $base)->selectRaw('lifecycle_stage, count(*) as c')->groupBy('lifecycle_stage')->pluck('c', 'lifecycle_stage');
         $columnLeads = [];
         foreach ($pipelineStages as $stageKey => $meta) {
-            $columnLeads[$stageKey] = $allLeads->where('lifecycle_stage', $stageKey);
+            $columnLeads[$stageKey] = (clone $base)->with(['company', 'assignedUser', 'deals'])
+                ->where('lifecycle_stage', $stageKey)
+                ->orderByDesc('overall_score')
+                ->limit($expand === $stageKey ? self::EXPANDED_CARDS : self::CARDS_PER_COLUMN)
+                ->get();
         }
 
         $salesReps = User::whereIn('role', ['sales', 'admin'])->get();
         $countries = Lead::whereNotNull('country')->distinct()->pluck('country');
 
-        return view('crm.pipeline', compact('columnLeads', 'pipelineStages', 'salesReps', 'countries', 'assignedTo', 'country'));
+        return view('crm.pipeline', compact('columnLeads', 'stageTotals', 'expand', 'pipelineStages', 'salesReps', 'countries', 'assignedTo', 'country'));
     }
 
     public const STAGES = ['new', 'researching', 'qualified', 'ready_for_review', 'contacted', 'replied', 'interested', 'meeting_booked', 'proposal_sent', 'negotiation', 'nurture', 'won', 'lost', 'not_a_fit', 'opted_out'];

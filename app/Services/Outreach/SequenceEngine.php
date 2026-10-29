@@ -141,7 +141,7 @@ class SequenceEngine
         $settings = \App\Models\OutreachSetting::current();
         $minDelay = (int) ($settings->follow_up_delay_days ?? 0);
         $cadence = array_map(fn ($d) => max((int) $d, $minDelay), (array) config('leadpilot.outreach.follow_up_days', [3, 4, 4, 5]));
-        $max = min((int) config('leadpilot.outreach.max_touches', 5), 1 + (int) ($settings->max_follow_ups ?? 4));
+        $max = $settings->maxTouches();
 
         $sent = CampaignRecipient::with('lead.company', 'campaign')
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
