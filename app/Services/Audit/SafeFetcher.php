@@ -175,6 +175,23 @@ class SafeFetcher
         return $norm($x) === $norm($y);
     }
 
+    /**
+     * Same website, whatever the scheme: http://firm.com links to https://www.firm.com/attorneys and redirects
+     * there. Used to decide which of a site's own pages the audit may read (every fetch is still SSRF-vetted).
+     */
+    public static function sameSite(string $a, string $b): bool
+    {
+        $x = parse_url($a);
+        $y = parse_url($b);
+        if (!$x || !$y || isset($x['user']) || isset($y['user'])) {
+            return false;
+        }
+        $host = fn ($p) => strtolower(preg_replace('/^www\./', '', $p['host'] ?? ''));
+        $port = fn ($p) => in_array($p['port'] ?? null, [null, 80, 443], true) ? null : $p['port'];
+
+        return $host($x) !== '' && $host($x) === $host($y) && $port($x) === $port($y);
+    }
+
     /** Only allow http(s) links to be stored/rendered (blocks javascript:, data: etc.). */
     public static function safeUrl(?string $url): ?string
     {

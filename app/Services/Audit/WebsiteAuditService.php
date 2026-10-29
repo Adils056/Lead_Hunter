@@ -37,6 +37,9 @@ class WebsiteAuditService
     protected string $ua;
     protected int $timeout;
     protected array $robotsCache = [];
+    /** Bumped when the team-page crawl improves, so leadpilot:find-people reads those sites again. */
+    public const PEOPLE_CRAWL_VERSION = 2;
+
     protected SafeFetcher $fetcher;
     protected ?string $lastFinalUrl = null;
 
@@ -158,7 +161,7 @@ class WebsiteAuditService
             }
             try {
                 $r = $this->get($u);
-                if ($r->successful() && SafeFetcher::sameOrigin($this->lastFinalUrl ?? $u, $finalUrl) && str_contains(strtolower($r->header('Content-Type') ?: 'text/html'), 'html')) {
+                if ($r->successful() && SafeFetcher::sameSite($this->lastFinalUrl ?? $u, $finalUrl) && str_contains(strtolower($r->header('Content-Type') ?: 'text/html'), 'html')) {
                     $pages[$u] = $r->body();
                 }
             } catch (\Throwable) {
@@ -473,12 +476,12 @@ class WebsiteAuditService
                 continue;
             }
             $abs = $this->absolutize($href, $base);
-            if (!$abs || !SafeFetcher::sameOrigin($abs, $base) || preg_match('/\.(pdf|jpe?g|png|gif|webp|zip|docx?|xlsx?)(\?|$)/i', $abs)) {
+            if (!$abs || !SafeFetcher::sameSite($abs, $base) || preg_match('/\.(pdf|jpe?g|png|gif|webp|zip|docx?|xlsx?)(\?|$)/i', $abs)) {
                 continue;
             }
             $abs = strtok($abs, '#');
-            if (rtrim($abs, '/') === rtrim($base, '/')) {
-                continue;
+            if (in_array(trim((string) parse_url($abs, PHP_URL_PATH), '/'), ['', 'index.html', 'index.php', 'home'], true)) {
+                continue; // the homepage itself, under any scheme
             }
             $haystack = trim($a->textContent) . ' ' . str_replace(['-', '_', '/'], ' ', (string) parse_url($abs, PHP_URL_PATH));
             foreach ($tiers as $rank => $re) {
@@ -623,6 +626,7 @@ class WebsiteAuditService
             'socials' => $contacts['socials'] ?? [],
             'people' => array_values($contacts['people'] ?? []),
             'pages' => array_values($contacts['pages'] ?? []),
+            'people_crawl' => self::PEOPLE_CRAWL_VERSION,
         ];
         $score = $this->opportunityScore($checks);
         $opps = $this->mapOpportunities($checks);
