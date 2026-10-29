@@ -157,7 +157,8 @@ class AutopilotEngineTest extends TestCase
         $rec = CampaignRecipient::where('lead_id', $lead->id)->first();
         $dup = CampaignRecipient::create(['campaign_id' => $rec->campaign_id, 'lead_id' => $lead->id, 'status' => 'approved', 'idempotency_key' => 'dup', 'sequence_step' => 2, 'parent_recipient_id' => $rec->id, 'personalized_subject' => 'Re: x', 'personalized_body' => 'y']);
         $engine->dispatchDue();
-        $this->assertSame('queued', $dup->fresh()->status);
+        $this->assertSame('approved', $dup->fresh()->status, 'stays approved (a queued status was never picked up again)');
+        $this->assertTrue($dup->fresh()->scheduled_at->isFuture(), 'rescheduled a day later');
         $this->assertCount(1, $this->prospectMails());
     }
 

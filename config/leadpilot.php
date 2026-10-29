@@ -164,6 +164,8 @@ return [
         'max_words_first_email' => 80,
         'follow_up_days' => [3, 4, 4, 5],   // touches 2..5 => ~16-day sequence, stop on any reply
         'max_touches' => 5,
+        // one conversation per company: a first email to a second person waits this long after the company's last email
+        'company_gap_days' => (int) env('LEADPILOT_COMPANY_GAP_DAYS', 10),
     ],
 
     'sources' => [
