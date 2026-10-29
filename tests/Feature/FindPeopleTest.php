@@ -44,4 +44,23 @@ class FindPeopleTest extends TestCase
         // already read with the people step: the next run skips both
         $this->artisan('leadpilot:find-people')->expectsOutputToContain('Re-audited 0 of 0 companies')->assertExitCode(0);
     }
+
+    public function test_team_page_on_https_www_is_read_when_the_homepage_is_plain_http(): void
+    {
+        // live case (RK Law Group): website stored as http://, its menu links to https://www. pages
+        config(['leadpilot.sources.pagespeed.enabled' => false, 'leadpilot.sources.website_crawler.dns_overrides' => ['mixfirm.test' => ['93.184.216.34'], 'www.mixfirm.test' => ['93.184.216.34']]]);
+        Http::fake([
+            '*mixfirm.test/robots.txt' => Http::response("User-agent: *\nDisallow:\n", 200),
+            'www.mixfirm.test/meet-the-team*' => Http::response('<html><body><h3>Nadia Hussain</h3><p>Founder &amp; CEO</p><a href="mailto:nadia@mixfirm.test">mail</a></body></html>', 200, ['Content-Type' => 'text/html']),
+            'mixfirm.test*' => Http::response('<html><body><a href="https://www.mixfirm.test/meet-the-team/">Meet the team</a><a href="https://www.mixfirm.test/">Home</a></body></html>', 200, ['Content-Type' => 'text/html']),
+            '*' => Http::response('', 404),
+        ]);
+        $c = Company::create(['name' => 'Mix Firm', 'website' => 'http://mixfirm.test', 'domain' => 'mixfirm.test', 'country' => 'Pakistan']);
+
+        $audit = app(\App\Services\Audit\WebsiteAuditService::class)->audit($c);
+
+        $this->assertContains('https://www.mixfirm.test/meet-the-team/', $audit->contacts_found['pages']);
+        $this->assertSame('nadia@mixfirm.test', $audit->contacts_found['people'][0]['email']);
+        $this->assertDatabaseHas('leads', ['email' => 'nadia@mixfirm.test', 'contact_status' => 'identified', 'first_name' => 'Nadia']);
+    }
 }

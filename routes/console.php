@@ -292,12 +292,12 @@ Artisan::command('leadpilot:audit {company : Company id}', function (\App\Servic
 
 Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Audit\WebsiteAuditService $audits, \App\Services\LeadScoringService $scoring) {
     // Re-audit companies that only have a shared inbox (or nothing) so their team / about pages are read for named
-    // decision-makers. Companies already read with the people step (their audit lists "pages") are skipped.
+    // decision-makers. Companies already read with the current people crawl are skipped.
     $deadline = microtime(true) + (int) $this->option('seconds');
     $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('website')
         ->whereHas('leads', fn ($q) => $q->whereIn('contact_status', ['generic_inbox', 'needs_enrichment']))
         ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
-        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"pages":%'))
+        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"people_crawl":' . \App\Services\Audit\WebsiteAuditService::PEOPLE_CRAWL_VERSION . '%'))
         ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
         ->limit((int) $this->option('limit'))->get();
 
