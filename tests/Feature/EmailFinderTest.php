@@ -82,4 +82,16 @@ class EmailFinderTest extends TestCase
         // each company is tried once; the found one is now skipped for having a named contact
         $this->artisan('leadpilot:find-emails')->expectsOutputToContain('Tried 0 companies')->assertExitCode(0);
     }
+
+    public function test_works_with_mysql_style_json_spacing(): void
+    {
+        // live: MySQL stores {"people": [ ... ]} with spaces, which a LIKE '%"people":[{%' never matched
+        $this->fakeMailServers();
+        $c = $this->companyWithPerson('Proof Labs', 'proof.test', 'Nadia', 'Hussain');
+        $audit = WebsiteAudit::where('company_id', $c->id)->first();
+        \Illuminate\Support\Facades\DB::table('website_audits')->where('id', $audit->id)
+            ->update(['contacts_found' => json_encode($audit->contacts_found, JSON_PRETTY_PRINT)]);
+
+        $this->artisan('leadpilot:find-emails')->expectsOutputToContain('nadia.hussain@proof.test ✓')->assertExitCode(0);
+    }
 }
