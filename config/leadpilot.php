@@ -217,7 +217,8 @@ return [
             'user_agent' => env('LEADPILOT_CRAWLER_UA', 'LeadPilotBot/1.0 (+business website audit; contact: admin)'),
             'timeout' => 15,
             'max_internal_links_checked' => 15,
-            'contact_paths' => ['/contact', '/contact-us', '/about', '/about-us'],
+            'contact_paths' => ['/contact', '/contact-us', '/about', '/about-us', '/team', '/our-team'],
+            'max_pages' => 4, // homepage + 3 of the paths above (first ones that exist)
         ],
     ],
 

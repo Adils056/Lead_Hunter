@@ -19,6 +19,12 @@
         <div class="card-lp p-4">
             <form action="{{ route('campaigns.store') }}" method="POST">
                 @csrf
+                @if($errors->any())
+                    <div class="alert alert-danger small">@foreach($errors->all() as $err)<div>{{ $err }}</div>@endforeach</div>
+                @endif
+                @if($templates->isEmpty())
+                    <div class="alert alert-warning small">No active email template. <a href="{{ route('templates.create') }}">Create one</a> first.</div>
+                @endif
                 <div class="row g-3 mb-3">
                     <div class="col-12">
                         <label class="form-label small fw-semibold">Campaign Name <span class="text-danger">*</span></label>
@@ -28,31 +34,24 @@
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Service Being Offered <span class="text-danger">*</span></label>
                         <select name="service_offered" class="form-select" required>
-                            @foreach([
-                                'Laravel and PHP development',
-                                'ERP and CRM development',
-                                'Custom software development',
-                                'E-commerce development',
-                                'API development and integration',
-                                'SaaS product development',
-                                'Database design, optimization, and system integrations',
-                                'Software maintenance and technical consulting'
-                            ] as $srv)
-                                <option value="{{ $srv }}" {{ old('service_offered') == $srv ? 'selected' : '' }}>{{ $srv }}</option>
+                            @foreach($services as $slug => $label)
+                                <option value="{{ $slug }}" {{ old('service_offered') == $slug ? 'selected' : '' }}>{{ $label }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text" style="font-size: 0.7rem;">The services approved in Settings → Outreach Engine.</div>
                     </div>
 
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold">Email Template <span class="text-danger">*</span></label>
-                        <select name="email_template_id" class="form-select" required>
+                        <select name="email_template_id" class="form-select @error('email_template_id') is-invalid @enderror" required>
                             <option value="">Choose an approved template...</option>
                             @foreach($templates as $tmpl)
                                 <option value="{{ $tmpl->id }}" {{ old('email_template_id') == $tmpl->id ? 'selected' : '' }}>
-                                    {{ $tmpl->name }} ({{ $tmpl->service_category }})
+                                    {{ $tmpl->name }} ({{ \App\Support\ServiceCatalog::label($tmpl->service_category) }})
                                 </option>
                             @endforeach
                         </select>
+                        <div class="form-text" style="font-size: 0.7rem;"><a href="{{ route('templates.index') }}">Manage templates</a></div>
                     </div>
 
                     <div class="col-md-4">
@@ -63,8 +62,8 @@
 
                     <div class="col-md-4">
                         <label class="form-label small fw-semibold">Daily Send Limit</label>
-                        <input type="number" name="daily_limit" class="form-control" value="{{ old('daily_limit', 30) }}" min="1" max="200" required>
-                        <div class="form-text" style="font-size: 0.7rem;">Safe throttling to protect domain reputation.</div>
+                        <input type="number" name="daily_limit" class="form-control @error('daily_limit') is-invalid @enderror" value="{{ old('daily_limit', $maxDaily) }}" min="1" max="{{ $maxDaily }}" required>
+                        <div class="form-text" style="font-size: 0.7rem;">Up to the global cap of {{ $maxDaily }} per day.</div>
                     </div>
 
                     <div class="col-md-4">
@@ -80,11 +79,12 @@
 
                     <div class="col-12">
                         <label class="form-label small fw-semibold">Target Countries</label>
+                        <div class="form-text mt-0 mb-2" style="font-size: 0.7rem;">Countries allowed in Settings → Outreach Engine.</div>
                         <div class="row g-2">
-                            @foreach(['United Kingdom', 'United States', 'Pakistan', 'Canada', 'Australia', 'Germany'] as $ctry)
+                            @foreach($countries as $ctry)
                             <div class="col-md-4">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="target_countries[]" value="{{ $ctry }}" id="ctry_{{ md5($ctry) }}" checked>
+                                    <input class="form-check-input" type="checkbox" name="target_countries[]" value="{{ $ctry }}" id="ctry_{{ md5($ctry) }}" {{ in_array($ctry, old('target_countries', $countries)) ? 'checked' : '' }}>
                                     <label class="form-check-label small" for="ctry_{{ md5($ctry) }}">
                                         {{ $ctry }}
                                     </label>

@@ -44,26 +44,33 @@ class CampaignController extends Controller
     {
         $this->authorize('create', Campaign::class);
 
-        $templates = EmailTemplate::where('is_active', true)->get();
+        EmailTemplateController::ensureStarters();
+        $settings = \App\Models\OutreachSetting::current();
+        $templates = EmailTemplate::where('is_active', true)->orderBy('name')->get();
         $sources = LeadSource::where('is_active', true)->get();
-        $countries = Lead::whereNotNull('country')->distinct()->pluck('country');
+        // only what Settings → Outreach Engine allows (the form used to tick Canada / Germany and offer 8 services)
+        $services = \App\Support\ServiceCatalog::approved();
+        $countries = $settings->allowed_countries ?: Lead::whereNotNull('country')->distinct()->pluck('country')->all();
         $industries = Lead::whereNotNull('industry')->distinct()->pluck('industry');
+        $maxDaily = (int) $settings->max_daily_sends;
 
-        return view('campaigns.create', compact('templates', 'sources', 'countries', 'industries'));
+        return view('campaigns.create', compact('templates', 'sources', 'services', 'countries', 'industries', 'maxDaily'));
     }
 
     public function store(Request $request)
     {
         $this->authorize('create', Campaign::class);
 
+        $settings = \App\Models\OutreachSetting::current();
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'service_offered' => ['required', 'string'],
+            'service_offered' => ['required', 'string', 'in:' . implode(',', array_keys(\App\Support\ServiceCatalog::approved()))],
             'target_countries' => ['nullable', 'array'],
+            'target_countries.*' => $settings->allowed_countries ? ['string', 'in:' . implode(',', $settings->allowed_countries)] : ['string'],
             'target_industries' => ['nullable', 'array'],
             'min_lead_score' => ['required', 'integer', 'between:1,100'],
             'eligible_sources' => ['nullable', 'array'],
-            'daily_limit' => ['required', 'integer', 'between:1,500'],
+            'daily_limit' => ['required', 'integer', 'between:1,' . max(1, (int) $settings->max_daily_sends)],
             'email_template_id' => ['required', 'exists:email_templates,id'],
             'require_approval' => ['boolean'],
             'timezone' => ['required', 'string'],

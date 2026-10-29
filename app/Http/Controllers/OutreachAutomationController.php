@@ -20,23 +20,7 @@ class OutreachAutomationController extends Controller
         $settings = OutreachSetting::current();
         $templates = EmailTemplate::where('is_active', true)->get();
 
-        $availableServices = [
-            'laravel_php' => 'Laravel & PHP Development',
-            'custom_software' => 'Custom Software & Web Apps',
-            'web_dev' => 'Website Design & Development',
-            'ecommerce' => 'E-Commerce Development',
-            'erp_pos' => 'Cloud ERP & POS Systems',
-            'api_integration' => 'API Development & Integration',
-            'saas_mvp' => 'SaaS MVP Development',
-            'mobile_app' => 'Mobile Application Development',
-            'ai_automation' => 'AI Automation & Workflows',
-            'database_optimization' => 'Database Design & Optimization',
-            'maintenance_support' => 'Software Maintenance & Support',
-        ];
-        // v3/v4 service catalog (config/leadpilot.php) — the keys autopilot campaigns use
-        foreach (config('leadpilot.services') as $k => $def) {
-            $availableServices[$k] ??= $def['label'];
-        }
+        $availableServices = \App\Support\ServiceCatalog::all();
 
         $availableCountries = [
             'Pakistan' => 'Pakistan (Domestic)',
@@ -91,7 +75,7 @@ class OutreachAutomationController extends Controller
         $data['allow_shared_inbox'] = $request->has('allow_shared_inbox');
         $data['allow_mx_only'] = $request->has('allow_mx_only');
         $data['allowed_countries'] = $request->input('allowed_countries', []);
-        $data['approved_services'] = $request->input('approved_services', []);
+        $data['approved_services'] = array_values(array_unique(array_map([\App\Support\ServiceCatalog::class, 'normalize'], (array) $request->input('approved_services', []))));
 
         $settings->update($data);
 

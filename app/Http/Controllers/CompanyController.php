@@ -51,7 +51,7 @@ class CompanyController extends Controller
         }
 
         if ($industry) {
-            $query->where('industry', $industry);
+            $query->where('industry_group', $industry);
         }
 
         if ($size) {
@@ -61,7 +61,7 @@ class CompanyController extends Controller
         $companies = $query->latest()->paginate(15)->withQueryString();
 
         $countries = Company::whereNotNull('country')->distinct()->pluck('country');
-        $industries = Company::whereNotNull('industry')->distinct()->pluck('industry');
+        $industries = Company::whereNotNull('industry_group')->distinct()->orderBy('industry_group')->pluck('industry_group');
 
         return view('companies.index', compact('companies', 'countries', 'industries', 'search', 'country', 'industry', 'size', 'status'));
     }

@@ -140,6 +140,8 @@
         /* Top Navbar & Main Content */
         #main-content {
             margin-left: 270px;
+            min-width: 0; /* a wide table or long URL stays inside the content area instead of widening the page */
+            overflow-x: clip; /* ...so the page never scrolls sideways under the fixed sidebar (SQA bug 30); clip keeps the sticky navbar working */
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -163,6 +165,7 @@
         .content-body {
             padding: 1.75rem;
             flex: 1;
+            min-width: 0;
         }
 
         /* Cards & Metric Cards */
@@ -408,6 +411,10 @@
             <a href="{{ route('campaigns.index') }}" class="nav-link-custom {{ request()->routeIs('campaigns.*') ? 'active' : '' }}">
                 <i class="bi bi-send-check-fill"></i>
                 <span>Campaign Automation</span>
+            </a>
+            <a href="{{ route('templates.index') }}" class="nav-link-custom {{ request()->routeIs('templates.*') ? 'active' : '' }}">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>Email Templates</span>
             </a>
             <a href="{{ route('analytics.index') }}" class="nav-link-custom {{ request()->routeIs('analytics.*') ? 'active' : '' }}">
                 <i class="bi bi-graph-up-arrow"></i>

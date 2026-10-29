@@ -45,11 +45,12 @@ class SequenceEngine
             return null;
         }
 
-        return Campaign::firstOrCreate(
+        $campaign = Campaign::firstOrCreate(
             ['icp_profile_id' => $icp?->id, 'is_autopilot' => true],
             [
                 'name' => 'Autopilot — ' . ($icp?->name ?? 'General'),
                 'service_offered' => $service,
+                'target_countries' => array_values((array) ($icp?->countries ?? [])), // the ICP's market, not "All Countries"
                 'min_lead_score' => ScoreBands::qualified(),
                 'daily_limit' => (int) config('leadpilot.autopilot.max_first_touch_per_day', 25),
                 'require_approval' => !$this->policy->isAutomatic('outreach.first_touch'),
@@ -59,6 +60,11 @@ class SequenceEngine
                 'created_by' => $owner,
             ]
         );
+        if ($icp && !$campaign->target_countries && $icp->countries) {
+            $campaign->update(['target_countries' => array_values((array) $icp->countries)]);
+        }
+
+        return $campaign;
     }
 
     /** @return array{planned:int, pending_approval:int, skipped:array} */
