@@ -389,6 +389,9 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
                 return true;
             }
         }
+        if (!\App\Services\Enrichment\WebsiteFinder::isOwnSite($url)) {
+            return true; // link-in-bio pages (linktr.ee) and directory profiles are not the business's site either
+        }
 
         return false;
     }

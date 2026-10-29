@@ -27,10 +27,19 @@ class WebsiteFinder
         'Canada' => ['ca', 'com'], 'Germany' => ['de', 'com'],
     ];
 
-    /** Hosts that are someone else's site (social, directories, domain sellers), not the business's own. */
-    protected const NOT_OWN_SITE = ['facebook.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com', 'youtube.com', 'tiktok.com', 'google.com',
-        'yelp.com', 'tripadvisor.com', 'yell.com', 'wa.me', 'whatsapp.com', 'linktr.ee', 'godaddy.com', 'sedo.com', 'dan.com', 'afternic.com',
-        'hugedomains.com', 'wixsite.com', 'business.site'];
+    /** Hosts that are someone else's site (social, link-in-bio, directories, domain sellers), not the business's own. */
+    public const NOT_OWN_SITE = ['facebook.com', 'fb.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com', 'youtube.com', 'youtu.be', 'tiktok.com',
+        'snapchat.com', 'pinterest.com', 'threads.net', 't.me', 'telegram.me', 'google.com', 'goo.gl', 'yelp.com', 'tripadvisor.com', 'yell.com', 'wa.me',
+        'whatsapp.com', 'linktr.ee', 'linkin.bio', 'beacons.ai', 'bio.link', 'taplink.cc', 'carrd.co', 'campsite.bio', 'booking.com', 'fresha.com',
+        'godaddy.com', 'sedo.com', 'dan.com', 'afternic.com', 'hugedomains.com', 'wixsite.com', 'business.site'];
+
+    /** True when the URL is the business's own site, not a profile on a social / link-in-bio / directory host. */
+    public static function isOwnSite(?string $url): bool
+    {
+        $host = preg_replace('/^(www|m|web)\./', '', strtolower((string) parse_url((string) $url, PHP_URL_HOST)));
+
+        return $host !== '' && !collect(self::NOT_OWN_SITE)->contains(fn ($d) => $host === $d || str_ends_with($host, '.' . $d));
+    }
 
     protected SafeFetcher $fetcher;
 
@@ -134,9 +143,7 @@ class WebsiteFinder
         }
         $html = (string) $res->body();
         $host = strtolower((string) parse_url($final, PHP_URL_HOST));
-        $bare = preg_replace('/^www\./', '', $host);
-        $notOwn = collect(self::NOT_OWN_SITE)->contains(fn ($d) => $bare === $d || str_ends_with($bare, '.' . $d));
-        if ($host === '' || $notOwn
+        if ($host === '' || !self::isOwnSite($final)
             || $this->audits->parkedReason($html, $final) || $this->audits->botWall($html, $final) || $this->audits->isEmptyShell($html)) {
             return null;
         }

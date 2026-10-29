@@ -43,6 +43,9 @@ class ProspectIngestor
     {
         $name = trim((string) ($data['name'] ?? ''));
         $data['website'] = SafeFetcher::safeUrl($data['website'] ?? null);
+        if ($data['website'] && !\App\Services\Enrichment\WebsiteFinder::isOwnSite($data['website'])) {
+            $data['website'] = null; // an Instagram / linktr.ee page is not the business's site: nothing to audit or redesign
+        }
         $data['source_url'] = SafeFetcher::safeUrl($data['source_url'] ?? null);
         if ($name === '') {
             return ['company' => null, 'created' => false, 'excluded' => 'Missing company name.'];

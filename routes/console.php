@@ -464,7 +464,7 @@ Artisan::command('leadpilot:english-names {--limit=300 : Companies to try} {--se
             }
         }
         $english = null;
-        if ($website) {
+        if ($website && \App\Services\Enrichment\WebsiteFinder::isOwnSite($website)) { // a linktr.ee page names Linktree, not the salon
             try {
                 [$res, $final] = $fetcher->fetch(rtrim($website, '/') . '/');
                 $english = $res->successful() ? \App\Support\EnglishName::fromHtml((string) $res->body(), parse_url($final, PHP_URL_HOST)) : null;
