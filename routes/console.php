@@ -357,6 +357,44 @@ Artisan::command('leadpilot:reaudit-shells {--seconds=300 : Stop after this many
     $this->info('Re-audited ' . array_sum($out) . ' of ' . $ids->count() . ' tiny-page audits: ' . json_encode($out));
 })->purpose('Re-audit companies whose audit came from a tiny redirect / JavaScript-only page');
 
+Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
+    // Decision-makers named on a company's own site but with no published address: try the common patterns on the
+    // company's mail server and keep one only when that mailbox is accepted and a random one is not (no mail is sent).
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('domain')
+        ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
+        ->whereHas('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"people":[{%'))
+        ->with('latestWebsiteAudit')->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
+        ->limit((int) $this->option('limit') * 3)->get();
+
+    $outcomes = [];
+    $done = 0;
+    foreach ($companies as $c) {
+        if (microtime(true) > $deadline || $done >= (int) $this->option('limit')) {
+            break;
+        }
+        $person = collect($c->latestWebsiteAudit?->contacts_found['people'] ?? [])->first(fn ($p) => empty($p['email']));
+        if (!$person || \Illuminate\Support\Facades\Cache::has("email_finder:tried:{$c->id}")) {
+            continue;
+        }
+        $done++;
+        $r = $finder->find($person['first_name'], $person['last_name'], $c->domain);
+        \Illuminate\Support\Facades\Cache::put("email_finder:tried:{$c->id}", $r['outcome'], now()->addDays($r['outcome'] === 'cannot_probe' ? 1 : 30));
+        $outcomes[$r['outcome']] = ($outcomes[$r['outcome']] ?? 0) + 1;
+        if ($r['outcome'] !== 'found') {
+            $this->line("  {$c->id} {$c->name}: {$person['name']} → {$r['outcome']}");
+            continue;
+        }
+        $lead = \App\Services\Audit\WebsiteAuditService::namedContact($c, $person, $r['email'], 'Company website + mailbox check', 'smtp_pattern');
+        if ($lead) {
+            $verifier->verifyEmail($lead->email, $lead); // records the proof like every other address
+            $scoring->evaluateLead($lead->fresh());
+        }
+        $this->line("  {$c->id} {$c->name}: {$person['name']} ({$person['role']}) → {$r['email']} ✓");
+    }
+    $this->info("Tried {$done} companies: " . json_encode($outcomes) . '  (found = mailbox accepted; catch_all / cannot_probe = no proof, nothing kept)');
+})->purpose('Find the mailbox of website-named decision-makers by pattern + SMTP check (kept only when proven)');
+
 Artisan::command('leadpilot:places-purge {--days= : Override retention days}', function () {
     // Google Maps Platform terms: only place_id may be stored indefinitely. Remove Places-sourced
     // field values older than the retention window unless a different source has since confirmed them.
@@ -655,4 +693,5 @@ Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to downloa
 })->purpose('Download Overture places for the searched cities ahead of time (once per monthly release)');
 
 Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
+Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
 Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();

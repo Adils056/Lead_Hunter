@@ -862,7 +862,15 @@ class WebsiteAuditService
     protected function addNamedContact(Company $company, WebsiteAudit $audit): ?Lead
     {
         $person = collect($audit->contacts_found['people'] ?? [])->first(fn ($p) => !empty($p['email']));
-        if (!$person || Lead::where('email', $person['email'])->exists()) {
+
+        return $person ? self::namedContact($company, $person, $person['email'], 'Company website (team / about page)', 'crawl') : null;
+    }
+
+    /** One named decision-maker contact (unverified until the SMTP check runs), unless that address is already a lead. */
+    public static function namedContact(Company $company, array $person, string $email, string $sourceName, string $method): ?Lead
+    {
+        $email = strtolower($email);
+        if (Lead::where('email', $email)->exists()) {
             return null;
         }
         $sibling = Lead::where('company_id', $company->id)->orderBy('id')->first();
@@ -872,20 +880,20 @@ class WebsiteAuditService
             'first_name' => $person['first_name'],
             'last_name' => $person['last_name'],
             'job_title' => $person['role'],
-            'email' => $person['email'],
+            'email' => $email,
             'phone' => $company->public_phone,
             'contact_status' => 'identified',
             'country' => $company->country,
             'industry' => $company->industry,
-            'source_name' => 'Company website (team / about page)',
-            'source_url' => $person['source_url'],
+            'source_name' => $sourceName,
+            'source_url' => $person['source_url'] ?? null,
             'discovery_date' => now(),
             'relevant_services' => $sibling?->relevant_services,
             'email_verification_status' => 'unverified',
             'lifecycle_stage' => 'new',
         ]);
-        DataProvenance::record($lead, ['first_name' => $person['first_name'], 'last_name' => $person['last_name'], 'job_title' => $person['role'], 'email' => $person['email']],
-            'website_crawl', $person['source_url'], 'crawl', 85);
+        DataProvenance::record($lead, ['first_name' => $person['first_name'], 'last_name' => $person['last_name'], 'job_title' => $person['role'], 'email' => $email],
+            $method === 'crawl' ? 'website_crawl' : 'email_pattern_smtp', $person['source_url'] ?? null, $method, 85);
 
         return $lead;
     }
