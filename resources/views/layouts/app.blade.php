@@ -401,6 +401,10 @@
                 <i class="bi bi-trophy"></i>
                 <span>Win Ladder</span>
             </a>
+            <a href="{{ route('radar.index') }}" class="nav-link-custom {{ request()->routeIs('radar.*') ? 'active' : '' }}">
+                <i class="bi bi-bullseye"></i>
+                <span>Buyer's Radar</span>
+            </a>
             <a href="{{ route('buying-signals.index') }}" class="nav-link-custom {{ request()->routeIs('buying-signals.*') ? 'active' : '' }}">
                 <i class="bi bi-broadcast-pin"></i>
                 <span>Buying Signals</span>
