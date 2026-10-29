@@ -85,9 +85,9 @@ class WebsiteAuditService
         // 401/403/407/429/451: the site is up but refuses THIS server (geo/IP block, firewall, rate limit). Seen live:
         // a US law firm answered "403 Forbidden" to Pakistan while it loads fine in the US. Never a "site is down" claim.
         if ($res && in_array($res->status(), self::BLOCKED_STATUSES, true)) {
-            return $this->store($company, $url, $this->lastFinalUrl ?? $url, 'bot_protected', $res->status(), $ms, null, [
+            return $this->withoutClaims($company, $this->store($company, $url, $this->lastFinalUrl ?? $url, 'bot_protected', $res->status(), $ms, null, [
                 $this->check('reachable', 'Website reachable', 'info', $res->status(), "The site refused our server (HTTP {$res->status()}: blocked by region, firewall or rate limit). It is not down; it could not be audited from here."),
-            ], [], $contacts, null);
+            ], [], $contacts, null));
         }
         if (!$res || $res->status() >= 400) {
             $checks[] = $this->check('reachable', 'Website reachable', 'fail', $res?->status(), $res ? "Homepage returned HTTP {$res->status()}." : 'Request failed: ' . mb_substr($err ?? 'unknown', 0, 200), ['website_unreachable']);
@@ -110,12 +110,36 @@ class WebsiteAuditService
         $html = $res->body();
         $bytes = strlen($html);
 
+        // A tiny page that only forwards the visitor (meta refresh / window.location) is not the website: follow it,
+        // up to two hops (live case: rklawgroup.com answered 163 bytes and was audited as "no H1, no viewport").
+        for ($hop = 0; $hop < 2 && ($next = $this->clientRedirect($html, $finalUrl)); $hop++) {
+            if ($this->fetcher->blockReason($next) || !$this->robotsAllows($next)) {
+                break;
+            }
+            try {
+                $r = $this->get($next);
+            } catch (\Throwable) {
+                break;
+            }
+            if (!$r->successful()) {
+                break;
+            }
+            [$res, $finalUrl, $html] = [$r, $this->lastFinalUrl ?? $next, $r->body()];
+            $bytes = strlen($html);
+        }
+        if ($this->isEmptyShell($html)) {
+            // nothing a visitor can read (JavaScript-only app or unfollowed redirect): auditing it would invent gaps
+            return $this->withoutClaims($company, $this->store($company, $url, $finalUrl, 'no_content', $res->status(), $ms, $bytes, [
+                $this->check('reachable', 'Website reachable', 'info', $res->status(), "The homepage returned only {$bytes} bytes with no readable content (a redirect or JavaScript-only page); nothing was audited and no gap is claimed."),
+            ], [], $contacts, null));
+        }
+
         // A bot-protection challenge (captcha / "checking your browser") is not the business's website: auditing it
         // would report gaps the real site may not have. Record that the site could not be audited, claim nothing.
         if ($wall = $this->botWall($html, $finalUrl)) {
-            return $this->store($company, $url, $finalUrl, 'bot_protected', $res->status(), $ms, $bytes, [
+            return $this->withoutClaims($company, $this->store($company, $url, $finalUrl, 'bot_protected', $res->status(), $ms, $bytes, [
                 $this->check('reachable', 'Website reachable', 'info', $res->status(), "The site answered with a bot-protection page ({$wall}); the real homepage could not be audited."),
-            ], [], $contacts, null);
+            ], [], $contacts, null));
         }
         $checks[] = $this->check('reachable', 'Website reachable', 'pass', $res->status(), "Homepage returned HTTP {$res->status()}.");
 
@@ -459,6 +483,46 @@ class WebsiteAuditService
         }
 
         return array_values($t);
+    }
+
+    /** The site could not really be audited: drop the opportunity score and any earlier audit claim. */
+    protected function withoutClaims(Company $company, WebsiteAudit $audit): WebsiteAudit
+    {
+        $company->update(['website_opportunity_score' => 0, 'website_audited_at' => $audit->audited_at]);
+        BuyingSignal::where('company_id', $company->id)->where('signal_type', 'website_issues')->where('metadata->source', 'website_audit')->delete();
+
+        return $audit;
+    }
+
+    /** Target of a meta-refresh or JavaScript redirect on a small forwarding page, or null. */
+    protected function clientRedirect(string $html, string $base): ?string
+    {
+        if (strlen($html) > 8192) {
+            return null; // a real page that happens to contain a script redirect somewhere
+        }
+        $target = null;
+        if (preg_match('/<meta[^>]+http-equiv=["\']?refresh["\']?[^>]*content=["\']?\s*\d*\s*;?\s*url\s*=\s*[\'"]?([^"\'>\s]+)/i', $html, $m)) {
+            $target = $m[1];
+        } elseif (preg_match('/(?:window\.|document\.|top\.|self\.)?location(?:\.href)?\s*(?:=|\.replace\(|\.assign\()\s*["\']([^"\']+)["\']/i', $html, $m)) {
+            $target = $m[1];
+        }
+        if (!$target) {
+            return null;
+        }
+        $abs = $this->absolutize(html_entity_decode(trim($target)), $base);
+
+        return $abs && SafeFetcher::safeUrl($abs) && rtrim($abs, '/') !== rtrim($base, '/') ? $abs : null;
+    }
+
+    /** No readable text and no links: nothing a visitor (or an audit) can judge. */
+    protected function isEmptyShell(string $html): bool
+    {
+        if (strlen($html) > 4096) {
+            return false;
+        }
+        $text = trim(preg_replace('/\s+/', ' ', strip_tags(preg_replace('#<(script|style|noscript)\b.*?</\1>#is', ' ', $html))));
+
+        return mb_strlen($text) < 40 && !preg_match('/<a\s[^>]*href=/i', $html);
     }
 
     /** Same-site links whose text or path says team / people / about / contact, best first (at most 6). */

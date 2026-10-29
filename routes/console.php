@@ -328,6 +328,34 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
     $this->info("Re-audited {$done} of {$companies->count()} companies: {$withPeople} list decision-makers, {$named} new named contact(s) with their own published email.");
 })->purpose('Read team / about pages of shared-inbox companies for named decision-makers (never guesses an email)');
 
+Artisan::command('leadpilot:reaudit-shells {--seconds=300 : Stop after this many seconds}', function (\App\Services\Audit\WebsiteAuditService $audits, \App\Services\LeadScoringService $scoring) {
+    // Audits taken from a tiny forwarding / JavaScript-only page (under 4 KB) reported gaps the real site may not have.
+    // Re-run them: the audit now follows the redirect, or records "no content" and claims nothing.
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $ids = \App\Models\WebsiteAudit::where('status', 'completed')->where('page_size_bytes', '<', 4096)->distinct()->pluck('company_id');
+    $out = [];
+    foreach (\App\Models\Company::whereIn('id', $ids)->get() as $c) {
+        if (microtime(true) > $deadline) {
+            break;
+        }
+        $latest = $c->latestWebsiteAudit;
+        if (!$latest || $latest->status !== 'completed' || $latest->page_size_bytes >= 4096) {
+            continue; // already re-audited
+        }
+        try {
+            $a = $audits->audit($c);
+        } catch (\Throwable $e) {
+            continue;
+        }
+        foreach ($c->leads()->get() as $lead) {
+            $scoring->evaluateLead($lead);
+        }
+        $out[$a->status] = ($out[$a->status] ?? 0) + 1;
+        $this->line("  {$c->id} {$c->name}: {$latest->page_size_bytes} bytes → {$a->status}" . ($a->status === 'completed' ? " ({$a->final_url}, opportunity {$a->opportunity_score})" : ''));
+    }
+    $this->info('Re-audited ' . array_sum($out) . ' of ' . $ids->count() . ' tiny-page audits: ' . json_encode($out));
+})->purpose('Re-audit companies whose audit came from a tiny redirect / JavaScript-only page');
+
 Artisan::command('leadpilot:places-purge {--days= : Override retention days}', function () {
     // Google Maps Platform terms: only place_id may be stored indefinitely. Remove Places-sourced
     // field values older than the retention window unless a different source has since confirmed them.
