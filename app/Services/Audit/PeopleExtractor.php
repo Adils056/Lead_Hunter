@@ -26,14 +26,17 @@ class PeopleExtractor
         'managing', 'general', 'head', 'chief', 'executive', 'partner', 'partners', 'board', 'leadership', 'management', 'staff', 'people', 'customer', 'customers',
         'testimonials', 'reviews', 'review', 'gallery', 'portfolio', 'projects', 'careers', 'jobs', 'faq', 'help', 'support', 'sign', 'login', 'register', 'shop', 'cart'];
 
+    protected ?string $companyName = null;
+
     protected const NAME = "(?:(?:Dr|Mr|Mrs|Ms|Prof|Engr)\.?\s+)?[A-Z][a-z'’\-]{1,20}(?:\s+[A-Z][a-z'’\-]{1,20}){1,2}";
 
     /**
      * @param array $emails emails found on the site: [['value' => .., 'on_company_domain' => bool], ...]
      * @return list<array{name:string, first_name:string, last_name:string, role:string, rank:int, email:?string, source_url:string}>
      */
-    public function extract(string $html, string $pageUrl, array $emails = []): array
+    public function extract(string $html, string $pageUrl, array $emails = [], ?string $companyName = null): array
     {
+        $this->companyName = $companyName;
         $found = [];
         foreach ($this->fromJsonLd($html) as [$name, $role, $email]) {
             $this->add($found, $name, $role, $email, $pageUrl, $emails);
@@ -82,7 +85,7 @@ class PeopleExtractor
                 $rank = max($rank, $score);
             }
         }
-        if ($rank === 0) {
+        if ($rank === 0 || $this->worksElsewhere($role)) {
             return;
         }
         $first = $parts[0];
@@ -93,6 +96,26 @@ class PeopleExtractor
             return;
         }
         $found[$key] = ['name' => $name, 'first_name' => $first, 'last_name' => $last, 'role' => mb_substr($role, 0, 80), 'rank' => $rank, 'email' => $email, 'source_url' => $pageUrl];
+    }
+
+    /**
+     * "Founder, Tenable" / "CEO at Datadog" / "CEO, Open Door Family Medical Centers": an investor, advisor or customer
+     * quoted on the site, not this company's own decision-maker.
+     */
+    protected function worksElsewhere(string $role): bool
+    {
+        if (!preg_match('/(?:,|\bat\b|@)\s*(.+)$/u', $role, $m)) {
+            return false;
+        }
+        $org = trim($m[1]);
+        $isRoleWords = (bool) preg_match('/^(and\s+)?(advis[eo]r|board( member)?|investor|' . implode('|', array_map(fn ($r) => preg_quote($r, '/'), array_keys(self::ROLES))) . ')(\s|$|,|&)/i', $org);
+        if ($isRoleWords || !preg_match('/\p{Lu}/u', $org)) {
+            return false;
+        }
+        $own = strtolower((string) $this->companyName);
+
+        return $own === '' || !collect(preg_split('/[^a-z0-9]+/', strtolower($org)))->filter(fn ($w) => strlen($w) > 2)
+            ->contains(fn ($w) => str_contains($own, $w));
     }
 
     /** A published on-domain address that is plainly this person's: jane@, jane.doe@, janedoe@, jdoe@, j.doe@, jane_doe@. */

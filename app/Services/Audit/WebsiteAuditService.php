@@ -38,7 +38,7 @@ class WebsiteAuditService
     protected int $timeout;
     protected array $robotsCache = [];
     /** Bumped when the team-page crawl improves, so leadpilot:find-people reads those sites again. */
-    public const PEOPLE_CRAWL_VERSION = 2;
+    public const PEOPLE_CRAWL_VERSION = 3;
 
     protected SafeFetcher $fetcher;
     protected ?string $lastFinalUrl = null;
@@ -175,7 +175,7 @@ class WebsiteAuditService
         }
         $people = new PeopleExtractor();
         foreach ($pages as $pageUrl => $body) {
-            foreach ($people->extract($body, $pageUrl, array_values($contacts['emails'] ?? [])) as $p) {
+            foreach ($people->extract($body, $pageUrl, array_values($contacts['emails'] ?? []), $company->name) as $p) {
                 $key = strtolower($p['name']);
                 if (!isset($contacts['people'][$key]) || ($p['email'] && !$contacts['people'][$key]['email'])) {
                     $contacts['people'][$key] = $p;
