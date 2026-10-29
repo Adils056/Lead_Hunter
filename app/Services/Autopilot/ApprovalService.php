@@ -140,12 +140,14 @@ class ApprovalService
                     }
                     $req->fill(['status' => 'approved', 'decided_by' => $user->id, 'decided_at' => now(), 'decision_note' => $note])->save();
                     $this->event($req, $user, $action === 'approve' ? 'approved' : 'edited_approved', ['note' => $note]);
+                    app(Notifier::class)->retire($req->id); // decided: the bell stops asking
 
                     return $this->execute($req, $user);
 
                 case 'reject':
                     $req->fill(['status' => 'rejected', 'decided_by' => $user->id, 'decided_at' => now(), 'decision_note' => $note])->save();
                     $this->event($req, $user, 'rejected', ['note' => $note]);
+                    app(Notifier::class)->retire($req->id);
                     $this->onReject($req);
                     break;
 
@@ -268,6 +270,10 @@ class ApprovalService
     {
         $reply = InboundReply::findOrFail($req->subject_id);
         $category = (string) (($req->payload['category'] ?? null) ?: $req->payload['suggested_category'] ?? 'uncertain');
+        if ($category === 'uncertain') {
+            // SQA bug 7: approving "uncertain" used to leave the reply unlabelled; read it again with the current rules
+            $category = app(\App\Services\Sales\ReplyClassifier::class)->classify((string) $reply->body_text)['category'];
+        }
         app(ReplyOutcomeService::class)->apply($reply, $category, 100, 'Confirmed by ' . ($user?->name ?? 'reviewer'));
         $reply->update(['is_reviewed' => true, 'reviewed_by' => $user?->id, 'reviewed_at' => now()]);
 
