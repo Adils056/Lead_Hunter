@@ -51,7 +51,7 @@ return [
             'impact' => 1.0, // business-impact multiplier used to rank offers
             'label' => 'Technical SEO',
             'pitch' => 'fixing the technical issues that stop Google from showing your pages',
-            'triggers' => ['missing_title', 'missing_meta_description', 'missing_h1', 'multiple_h1', 'no_canonical', 'no_structured_data', 'no_og_tags', 'broken_links', 'robots_noindex'],
+            'triggers' => ['missing_title', 'missing_meta_description', 'missing_h1', 'multiple_h1', 'no_canonical', 'no_structured_data', 'no_og_tags', 'broken_links', 'robots_noindex', 'no_sitemap'],
             'typical_value_usd' => [300, 2000],
         ],
         'accessibility' => [
@@ -121,7 +121,7 @@ return [
             'impact' => 0.6, // business-impact multiplier used to rank offers
             'label' => 'Website Care & Maintenance',
             'pitch' => 'keeping the site updated, secure and backed up every month',
-            'triggers' => ['outdated_cms_version', 'mixed_content', 'broken_links'],
+            'triggers' => ['outdated_cms_version', 'mixed_content', 'broken_links', 'ssl_invalid', 'ssl_expiring', 'no_https_redirect', 'missing_security_headers', 'server_version_exposed', 'outdated_php'],
             'typical_value_usd' => [50, 300], // per month
         ],
     ],
@@ -227,6 +227,9 @@ return [
             'max_internal_links_checked' => 15,
             'contact_paths' => ['/contact', '/contact-us', '/about', '/about-us', '/team', '/our-team'],
             'max_pages' => 5, // homepage + 4 pages: team/about/contact links found on the homepage first, then the paths above
+            // technical / security checks: SSL certificate, http->https redirect, sitemap (one extra connection each)
+            'tech_checks' => (bool) env('LEADPILOT_AUDIT_TECH_CHECKS', true),
+            'tech_timeout' => 8,
         ],
     ],
 

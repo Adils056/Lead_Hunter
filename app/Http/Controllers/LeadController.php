@@ -183,6 +183,8 @@ class LeadController extends Controller
             'emailVerifications' => fn($q) => $q->latest(),
         ]);
 
+        \App\Models\WhatsappTemplate::ensureStarters();
+
         return view('leads.show', compact('lead'));
     }
 

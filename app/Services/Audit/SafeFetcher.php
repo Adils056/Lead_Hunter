@@ -63,6 +63,12 @@ class SafeFetcher
         }
     }
 
+    /** @return array{0: string, 1: int, 2: string} host, port, vetted IP — for raw connections (TLS certificate check) */
+    public function vetted(string $url): array
+    {
+        return $this->vet($url);
+    }
+
     /** @return array{0: string, 1: int, 2: string} host, port, vetted IP */
     protected function vet(string $url): array
     {

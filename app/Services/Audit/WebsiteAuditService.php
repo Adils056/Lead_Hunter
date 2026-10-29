@@ -32,6 +32,39 @@ class WebsiteAuditService
         'click_to_call' => 3, 'title' => 5, 'meta_description' => 5, 'h1' => 4, 'lang' => 2, 'alt_text' => 3,
         'canonical' => 2, 'og_tags' => 2, 'structured_data' => 3, 'robots_noindex' => 8, 'copyright' => 4,
         'mixed_content' => 4, 'legacy_tech' => 4, 'broken_links' => 8, 'html_size' => 2, 'pagespeed_mobile' => 10,
+        'ssl_certificate' => 10, 'https_redirect' => 3, 'security_headers' => 3, 'server_disclosure' => 2, 'outdated_server' => 4, 'sitemap' => 2,
+    ];
+
+    /** What to do about each finding: shown under every failed / warned check and in the PDF report. */
+    public const FIXES = [
+        'reachable' => 'Restore hosting / DNS so the homepage answers; set up uptime monitoring.',
+        'https' => 'Install a free Let\'s Encrypt certificate and serve every page over https://.',
+        'ssl_certificate' => 'Renew the certificate (or turn on auto-renewal) and make sure it covers both the domain and www.',
+        'https_redirect' => 'Add a permanent (301) redirect from http:// to https:// for every page.',
+        'security_headers' => 'Send Strict-Transport-Security, X-Content-Type-Options: nosniff, a frame policy (X-Frame-Options or CSP frame-ancestors) and a Referrer-Policy from the web server.',
+        'server_disclosure' => 'Hide software versions: ServerTokens Prod / server_tokens off, and expose_php = Off.',
+        'outdated_server' => 'Upgrade PHP to a supported version (8.2 or later); old versions get no security fixes.',
+        'viewport' => 'Add <meta name="viewport" content="width=device-width, initial-scale=1"> and a responsive layout.',
+        'response_time' => 'Add page caching / a CDN and check the hosting plan; the server should answer in under 1 second.',
+        'pagespeed_mobile' => 'Compress and lazy-load images, cut unused scripts, and cache static files.',
+        'html_size' => 'Remove inline scripts / base64 images from the HTML and load them as cached files.',
+        'cta' => 'Put one clear "Get a quote" / "Book now" / "Call us" button above the fold.',
+        'contact_form' => 'Add a short enquiry form (name, phone, message) on the homepage or contact page.',
+        'click_to_call' => 'Make the phone number a tap-to-call tel: link.',
+        'title' => 'Write a unique 30-60 character page title with the business name and main service.',
+        'meta_description' => 'Write a 70-160 character meta description that says what you do and where.',
+        'h1' => 'Use exactly one H1 heading that names the main service.',
+        'lang' => 'Set <html lang="..."> for the page language.',
+        'alt_text' => 'Describe every meaningful image in its alt attribute.',
+        'canonical' => 'Add a canonical link to the preferred URL of each page.',
+        'og_tags' => 'Add Open Graph tags (og:title, og:description, og:image) for link previews.',
+        'structured_data' => 'Add schema.org LocalBusiness / Organization JSON-LD with address, phone and hours.',
+        'robots_noindex' => 'Remove the noindex directive so Google can list the page.',
+        'copyright' => 'Update the footer year (ideally automatically).',
+        'mixed_content' => 'Load every image, script and stylesheet over https://.',
+        'legacy_tech' => 'Update the CMS, plugins and front-end libraries (old jQuery has known vulnerabilities).',
+        'broken_links' => 'Fix or redirect the internal links that return errors.',
+        'sitemap' => 'Publish /sitemap.xml and submit it in Google Search Console.',
     ];
 
     protected string $ua;
@@ -164,6 +197,10 @@ class WebsiteAuditService
             ? $this->check('html_size', 'HTML document size', 'warn', "{$kb} KB", "Homepage HTML alone is {$kb} KB (warning above 500 KB).", ['large_page'])
             : $this->check('html_size', 'HTML document size', 'pass', "{$kb} KB", "Homepage HTML is {$kb} KB.");
 
+        if (config('leadpilot.sources.website_crawler.tech_checks', true)) {
+            $checks = array_merge($checks, $this->technicalChecks($res, $finalUrl, $https));
+        }
+
         // ---- 3. Parse
         $dom = new DOMDocument();
         libxml_use_internal_errors(true);
@@ -260,6 +297,75 @@ class WebsiteAuditService
         'captcha', 'just a moment', 'attention required', 'checking your browser', 'are you a robot', 'are you human',
         'access denied', 'ddos-guard', 'bot manager', 'please verify you are a human', 'request unsuccessful',
     ];
+
+    /**
+     * Security and technical health a visitor or Google would notice: the TLS certificate, the http -> https redirect,
+     * security headers, software versions the server gives away (and an end-of-life PHP), and a sitemap. Facts only:
+     * a check that could not be made is reported as info, never as a problem.
+     */
+    protected function technicalChecks(\Illuminate\Http\Client\Response $res, string $finalUrl, bool $https): array
+    {
+        $out = [];
+        $timeout = (int) config('leadpilot.sources.website_crawler.tech_timeout', 8);
+        $host = (string) parse_url($finalUrl, PHP_URL_HOST);
+        $origin = (parse_url($finalUrl, PHP_URL_SCHEME) ?: 'https') . '://' . $host;
+
+        if ($https) {
+            $tls = app(TlsInspector::class)->inspect($finalUrl, $timeout);
+            $out[] = match (true) {
+                $tls['error'] !== null => $this->check('ssl_certificate', 'SSL certificate', 'info', null, 'Could not read the certificate: ' . mb_substr($tls['error'], 0, 120)),
+                !$tls['ok'] => $this->check('ssl_certificate', 'SSL certificate', 'fail', $tls['problem'], "The SSL certificate is {$tls['problem']}; browsers show a security warning.", ['ssl_invalid']),
+                $tls['days_left'] < 21 => $this->check('ssl_certificate', 'SSL certificate', 'warn', $tls['expires_at']->toDateString(), "The SSL certificate expires in {$tls['days_left']} day(s) ({$tls['expires_at']->format('j M Y')}).", ['ssl_expiring']),
+                default => $this->check('ssl_certificate', 'SSL certificate', 'pass', $tls['expires_at']->toDateString(), 'Valid certificate' . ($tls['issuer'] ? " from {$tls['issuer']}" : '') . ', expires ' . $tls['expires_at']->format('j M Y') . '.'),
+            };
+            try {
+                [$plain, $plainFinal] = $this->fetcher->fetch('http://' . $host . '/', 'GET', $timeout);
+                $out[] = str_starts_with(strtolower($plainFinal), 'https://')
+                    ? $this->check('https_redirect', 'http:// redirects to https://', 'pass', $plainFinal, 'Visitors typing http:// are sent to the secure site.')
+                    : $this->check('https_redirect', 'http:// redirects to https://', 'warn', $plainFinal, "http://{$host}/ stays on http:// (HTTP {$plain->status()}) instead of redirecting to https://.", ['no_https_redirect']);
+            } catch (\Throwable) {
+                // port 80 closed or refused: nothing a visitor would see, nothing to claim
+            }
+        }
+
+        $h = fn (string $name) => trim((string) $res->header($name));
+        $csp = strtolower($h('Content-Security-Policy'));
+        $present = array_filter([
+            'Strict-Transport-Security' => !$https || $h('Strict-Transport-Security') !== '',
+            'X-Content-Type-Options' => strtolower($h('X-Content-Type-Options')) === 'nosniff',
+            'frame policy' => $h('X-Frame-Options') !== '' || str_contains($csp, 'frame-ancestors'),
+            'Referrer-Policy' => $h('Referrer-Policy') !== '',
+            'Content-Security-Policy' => $csp !== '',
+        ], fn ($ok) => !$ok);
+        $missing = array_keys($present);
+        $out[] = count($missing) >= 3
+            ? $this->check('security_headers', 'Security headers', 'warn', count($missing) . ' of 5 missing', 'Missing security headers: ' . implode(', ', $missing) . '.', ['missing_security_headers'])
+            : $this->check('security_headers', 'Security headers', 'pass', count($missing) . ' of 5 missing', $missing ? 'Most security headers are set; missing: ' . implode(', ', $missing) . '.' : 'All five security headers are set.');
+
+        $server = $h('Server');
+        $powered = $h('X-Powered-By');
+        $versions = array_values(array_filter([preg_match('/\d+\.\d+/', $server) ? "Server: {$server}" : null, preg_match('/\d+\.\d+/', $powered) ? "X-Powered-By: {$powered}" : null]));
+        $out[] = $versions
+            ? $this->check('server_disclosure', 'Software versions hidden', 'warn', implode('; ', $versions), 'The server tells every visitor its exact software versions (' . implode('; ', $versions) . '), which helps attackers pick known exploits.', ['server_version_exposed'])
+            : $this->check('server_disclosure', 'Software versions hidden', 'pass', null, 'The server does not reveal software versions in its headers.');
+        if (preg_match('#PHP/(\d+)\.(\d+)#i', $powered, $m)) {
+            $old = (int) $m[1] < 8 || ((int) $m[1] === 8 && (int) $m[2] < 2);
+            $out[] = $old
+                ? $this->check('outdated_server', 'Supported PHP version', 'fail', "PHP {$m[1]}.{$m[2]}", "The site runs PHP {$m[1]}.{$m[2]}, which no longer receives security fixes.", ['outdated_php'])
+                : $this->check('outdated_server', 'Supported PHP version', 'pass', "PHP {$m[1]}.{$m[2]}", "PHP {$m[1]}.{$m[2]} is a supported version.");
+        }
+
+        try {
+            [$sm] = $this->fetcher->fetch($origin . '/sitemap.xml', 'GET', $timeout);
+            $ok = $sm->successful() && preg_match('/<(urlset|sitemapindex)\b/i', substr((string) $sm->body(), 0, 4000));
+            $out[] = $ok
+                ? $this->check('sitemap', 'XML sitemap', 'pass', '/sitemap.xml', 'A sitemap is published at /sitemap.xml.')
+                : $this->check('sitemap', 'XML sitemap', 'warn', null, 'No sitemap at /sitemap.xml, so Google finds new pages more slowly.', ['no_sitemap']);
+        } catch (\Throwable) {
+        }
+
+        return $out;
+    }
 
     /** Name of the bot-protection wall the response is, or null for a normal page. */
     public function botWall(string $html, string $finalUrl): ?string

@@ -159,6 +159,25 @@
 
     <!-- Right Column: Verification, CRM Tasks, Deals, Next Steps -->
     <div class="col-lg-5">
+        @php($waPhone = \App\Support\Phone::international($lead->phone ?: $lead->company?->public_phone, $lead->country ?: $lead->company?->country))
+        @php($waTemplates = \App\Models\WhatsappTemplate::where('is_active', true)->orderBy('purpose')->get())
+        <div class="card-lp p-4 mb-4">
+            <h6 class="fw-bold mb-2"><i class="bi bi-whatsapp text-success me-1"></i> WhatsApp</h6>
+            @if(!$waPhone)
+                <p class="small text-muted mb-0">No usable phone number for this lead.</p>
+            @elseif($waTemplates->isEmpty())
+                <p class="small text-muted mb-0">No templates yet. <a href="{{ route('whatsapp-templates.index') }}">Add WhatsApp templates</a>.</p>
+            @else
+                <form method="POST" action="{{ route('leads.whatsapp', $lead) }}" target="_blank" class="d-flex gap-2">
+                    @csrf
+                    <select name="template_id" class="form-select form-select-sm" aria-label="WhatsApp template">
+                        @foreach($waTemplates as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach
+                    </select>
+                    <button class="btn btn-sm btn-success text-nowrap"><i class="bi bi-whatsapp me-1"></i>Open in WhatsApp</button>
+                </form>
+                <div class="small text-muted mt-2">To +{{ $waPhone }}. Opens WhatsApp with the message filled in; you check it and press send.</div>
+            @endif
+        </div>
         <!-- Contact & Deliverability Status -->
         <div class="card-lp p-4 mb-4">
             <h6 class="fw-bold mb-3"><i class="bi bi-shield-check text-info me-1"></i> Deliverability & Compliance</h6>

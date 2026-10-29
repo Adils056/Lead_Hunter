@@ -40,6 +40,7 @@ class ConversionAssistantService
 
         $audit = $c->latestWebsiteAudit;
         if ($audit && $audit->status === 'completed') {
+            $byKeyEarly = collect($audit->issues())->keyBy('key');
             $phr = [
                 'viewport' => "{$site} isn't set up for mobile screens (no viewport tag), so it shows zoomed-out on phones",
                 'cta' => "the {$site} homepage has no clear 'contact', 'quote' or 'book' button",
@@ -56,8 +57,12 @@ class ConversionAssistantService
                 'legacy_tech' => "{$site} runs outdated front-end code",
                 'mixed_content' => "{$site} loads some files insecurely on its https pages",
                 'og_tags' => "links to {$site} shared on WhatsApp or LinkedIn show no preview card",
+                'ssl_certificate' => ($byKeyEarly['ssl_certificate']['status'] ?? null) === 'fail'
+                    ? "the SSL certificate on {$site} is " . ($byKeyEarly['ssl_certificate']['value'] ?? 'not valid') . ', so browsers warn visitors before they reach the site'
+                    : "the SSL certificate on {$site} expires on " . \Carbon\Carbon::parse($byKeyEarly['ssl_certificate']['value'] ?? now())->format('j M') . ', after which browsers will warn visitors',
+                'outdated_server' => "{$site} runs " . ($byKeyEarly['outdated_server']['value'] ?? 'an old PHP version') . ', which no longer gets security fixes',
             ];
-            $order = ['robots_noindex', 'viewport', 'https', 'cta', 'pagespeed_mobile', 'broken_links', 'response_time', 'contact_form', 'click_to_call', 'meta_description', 'title', 'copyright', 'og_tags', 'legacy_tech', 'mixed_content'];
+            $order = ['robots_noindex', 'ssl_certificate', 'viewport', 'https', 'cta', 'outdated_server', 'pagespeed_mobile', 'broken_links', 'response_time', 'contact_form', 'click_to_call', 'meta_description', 'title', 'copyright', 'og_tags', 'legacy_tech', 'mixed_content'];
             $byKey = collect($audit->issues())->keyBy('key');
             foreach ($order as $k) {
                 if (!$byKey->has($k)) {
