@@ -63,4 +63,15 @@ class FindPeopleTest extends TestCase
         $this->assertSame('nadia@mixfirm.test', $audit->contacts_found['people'][0]['email']);
         $this->assertDatabaseHas('leads', ['email' => 'nadia@mixfirm.test', 'contact_status' => 'identified', 'first_name' => 'Nadia']);
     }
+
+    public function test_investors_and_quoted_customers_are_not_taken_as_the_companys_people(): void
+    {
+        // live case (Tolmo, Relevant Healthcare): backers and customers listed with their own company after the role
+        $html = '<body><p>Pierre Betouin, Cofounder &amp; CEO</p><p>Renaud Deraison, Founder, Tenable</p><p>Olivier Pomel, Co-founder &amp; CEO, Datadog</p>'
+            . '<p>Lindsay Farrell, CEO, Open Door Family Medical Centers</p><p>Jacob Hodes, Co-founder, advisor</p><p>Sam Lee, CTO at Tolmo</p></body>';
+        $names = array_column((new \App\Services\Audit\PeopleExtractor())->extract($html, 'https://tolmo.test', [], 'Tolmo'), 'name');
+        sort($names);
+
+        $this->assertSame(['Jacob Hodes', 'Pierre Betouin', 'Sam Lee'], $names);
+    }
 }
