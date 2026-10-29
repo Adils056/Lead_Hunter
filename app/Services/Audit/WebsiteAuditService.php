@@ -38,7 +38,7 @@ class WebsiteAuditService
     protected int $timeout;
     protected array $robotsCache = [];
     /** Bumped when the team-page crawl improves, so leadpilot:find-people reads those sites again. */
-    public const PEOPLE_CRAWL_VERSION = 3;
+    public const PEOPLE_CRAWL_VERSION = 4;
 
     protected SafeFetcher $fetcher;
     protected ?string $lastFinalUrl = null;
@@ -126,6 +126,11 @@ class WebsiteAuditService
             }
             [$res, $finalUrl, $html] = [$r, $this->lastFinalUrl ?? $next, $r->body()];
             $bytes = strlen($html);
+        }
+        if ($parked = $this->parkedReason($html, $finalUrl)) {
+            return $this->withoutClaims($company, $this->store($company, $url, $finalUrl, 'no_content', $res->status(), $ms, $bytes, [
+                $this->check('reachable', 'Website reachable', 'info', $res->status(), "The address shows {$parked}, not the business's own site; nothing was audited and no gap is claimed."),
+            ], [], $contacts, null));
         }
         if ($this->isEmptyShell($html)) {
             // nothing a visitor can read (JavaScript-only app or unfollowed redirect): auditing it would invent gaps
@@ -523,6 +528,28 @@ class WebsiteAuditService
         $text = trim(preg_replace('/\s+/', ' ', strip_tags(preg_replace('#<(script|style|noscript)\b.*?</\1>#is', ' ', $html))));
 
         return mb_strlen($text) < 40 && !preg_match('/<a\s[^>]*href=/i', $html);
+    }
+
+    /** The hosting company's placeholder, a parked domain or "coming soon": the business has no live site here. */
+    public function parkedReason(string $html, string $finalUrl): ?string
+    {
+        if (preg_match('#/cgi-sys/defaultwebpage\.cgi|/cgi-sys/suspendedpage\.cgi#i', $finalUrl)) {
+            return 'the hosting control panel\'s default page';
+        }
+        $head = mb_strtolower(mb_substr(strip_tags(preg_replace('#<(script|style)\b.*?</\1>#is', ' ', $html)), 0, 3000));
+        foreach ([
+            'default web site page' => 'the hosting default page', 'this site is temporarily unavailable' => 'a hosting suspension page',
+            'account suspended' => 'a hosting suspension page', 'this domain is for sale' => 'a domain-for-sale page', 'buy this domain' => 'a domain-for-sale page',
+            'domain is parked' => 'a parked-domain page', 'parked free' => 'a parked-domain page', 'future home of' => 'a placeholder page',
+            'website coming soon' => 'a coming-soon page', 'site under construction' => 'an under-construction page', 'index of /' => 'a bare directory listing',
+            'apache2 default page' => 'the web server default page', 'welcome to nginx' => 'the web server default page', 'iis windows server' => 'the web server default page',
+        ] as $needle => $what) {
+            if (str_contains($head, $needle)) {
+                return $what;
+            }
+        }
+
+        return null;
     }
 
     /** Same-site links whose text or path says team / people / about / contact, best first (at most 6). */

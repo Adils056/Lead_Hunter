@@ -18,7 +18,7 @@ class WebsiteShellTest extends TestCase
     {
         parent::setUp();
         config(['leadpilot.sources.pagespeed.enabled' => false, 'leadpilot.sources.website_crawler.dns_overrides' => [
-            'shellfirm.test' => ['93.184.216.34'], 'www.realfirm.test' => ['93.184.216.34'], 'jsonly.test' => ['93.184.216.34'],
+            'shellfirm.test' => ['93.184.216.34'], 'www.realfirm.test' => ['93.184.216.34'], 'jsonly.test' => ['93.184.216.34'], 'parkedlaw.test' => ['93.184.216.34'],
         ]]);
     }
 
@@ -76,6 +76,30 @@ class WebsiteShellTest extends TestCase
 
         $this->artisan('leadpilot:reaudit-shells')->expectsOutputToContain('163 bytes → no_content')->assertExitCode(0);
         $this->assertSame(0, (int) $c->fresh()->website_opportunity_score);
+        $this->artisan('leadpilot:reaudit-shells')->expectsOutputToContain('Re-audited 0 of 1')->assertExitCode(0);
+    }
+
+    public function test_hosting_default_page_is_not_audited_as_the_business_site(): void
+    {
+        // live: rklawgroup.com forwards to /cgi-sys/defaultwebpage.cgi (cPanel "site not set up yet")
+        $default = '<html><head><title>Default Web Site Page</title></head><body><h1>Sorry!</h1><p>If you are the owner of this website, please contact your hosting provider.</p>'
+            . str_repeat('<p>cPanel hosting information and links.</p>', 30) . '<a href="https://cpanel.net">cPanel</a></body></html>';
+        Http::fake([
+            '*/robots.txt' => Http::response("User-agent: *\nDisallow:\n", 200),
+            'parkedlaw.test/cgi-sys/*' => Http::response($default, 200, ['Content-Type' => 'text/html']),
+            'parkedlaw.test*' => Http::response('<html><head><meta http-equiv="refresh" content="0;url=/cgi-sys/defaultwebpage.cgi"></head></html>', 200, ['Content-Type' => 'text/html']),
+            '*' => Http::response('', 404),
+        ]);
+        $c = Company::create(['name' => 'Parked Law', 'website' => 'http://parkedlaw.test', 'domain' => 'parkedlaw.test', 'country' => 'United States', 'website_opportunity_score' => 26]);
+
+        $audit = app(WebsiteAuditService::class)->audit($c);
+
+        $this->assertSame('no_content', $audit->status);
+        $this->assertStringContainsString('default page', $audit->checks[0]['evidence']);
+        $this->assertSame(0, (int) $c->fresh()->website_opportunity_score);
+
+        // the shell re-audit does not pick a company whose latest audit already came from the current code
+        \App\Models\WebsiteAudit::where('id', $audit->id)->update(['status' => 'completed', 'page_size_bytes' => 300]);
         $this->artisan('leadpilot:reaudit-shells')->expectsOutputToContain('Re-audited 0 of 1')->assertExitCode(0);
     }
 }
