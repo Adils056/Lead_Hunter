@@ -25,7 +25,11 @@ class WinLadderCommand extends Command
             $counts = $ladder->counts();
         }
 
-        $this->table(['Rung', 'Meaning', 'Leads'], array_map(fn ($k) => [$k, WinLadderService::TIERS[$k]['label'], $counts[$k] ?? 0], WinLadderService::ORDER));
+        $this->table(['Rung', 'Meaning', 'Leads', 'Expected interested', 'Expected deals'], array_map(function ($k) use ($ladder, $counts) {
+            $e = in_array($k, ['R', 'D'], true) ? null : $ladder->expected($k);
+
+            return [$k, WinLadderService::TIERS[$k]['label'], $counts[$k] ?? 0, $e ? $e['interested'] : '—', $e ? $e['deals'] : '—'];
+        }, WinLadderService::ORDER));
 
         $tiers = strtolower((string) $this->option('tier')) === 'all' ? WinLadderService::ORDER : [strtoupper((string) $this->option('tier'))];
         $rows = [];
@@ -43,14 +47,15 @@ class WinLadderCommand extends Command
                 continue;
             }
             $i = 0;
-            $this->table(['#', 'Company', 'Contact', 'Email', 'Score', 'Points', 'Why (top 2)', 'Blocker / next action'], $leads->map(function ($l) use (&$i, &$rows, $tier) {
+            $this->table(['#', 'Company', 'Contact', 'Email', 'Score', 'Success rate', 'Why (top 2)', 'Blocker / next action'], $leads->map(function ($l) use (&$i, &$rows, $tier) {
                 $i++;
                 $why = implode(' · ', array_slice((array) $l->win_reasons, 0, 2));
                 $next = $l->win_blockers ? implode(' · ', (array) $l->win_blockers) : (string) $l->win_next_action;
                 $rows[] = [$tier, $i, $l->company?->name, $l->full_name, $l->job_title, $l->email, $l->email_verification_status, $l->overall_score, $l->win_points, implode(' | ', (array) $l->win_reasons), implode(' | ', (array) $l->win_blockers), $l->win_next_action];
 
                 return [$i, mb_substr((string) $l->company?->name, 0, 28), mb_substr(trim($l->full_name . ' — ' . $l->job_title, ' —'), 0, 30),
-                    mb_substr((string) $l->email, 0, 30) . ' (' . $l->email_verification_status . ')', $l->overall_score, $l->win_points, mb_substr($why, 0, 60), mb_substr($next, 0, 60)];
+                    mb_substr((string) $l->email, 0, 30) . ' (' . $l->email_verification_status . ')', $l->overall_score,
+                    $l->win_interested_chance !== null ? "{$l->win_interested_chance}% int / {$l->win_reply_chance}% reply" : '—', mb_substr($why, 0, 60), mb_substr($next, 0, 60)];
             })->all());
         }
 
@@ -64,7 +69,7 @@ class WinLadderCommand extends Command
             $this->info("CSV written: {$csv} (" . count($rows) . ' rows)');
         }
         $this->newLine();
-        $this->line('Points rank leads inside a rung by evidence (request > audit gap > role > deliverability > score > freshness). They are not a win probability.');
+        $this->line('Success rate = estimated chance of an interested reply / any reply if the lead gets the full sequence: cold-email benchmarks per kind of evidence, moved toward your own results as replies come in.');
 
         return 0;
     }

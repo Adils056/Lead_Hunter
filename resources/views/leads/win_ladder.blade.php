@@ -9,7 +9,7 @@
         <h3 class="fw-bold mb-1">Win Ladder — who to email first</h3>
         <p class="text-muted small mb-0">
             Every lead sits on one rung. Rung A is ranked best-first by buying evidence: an explicit request beats an audited website gap, which beats a generic fit.
-            Evidence points are not a win probability — but each rung tells you the one next action.
+            Each lead shows its <strong>success rate</strong>: the estimated chance of a reply, an interested reply and a deal if it gets the full email sequence.
         </p>
     </div>
     <div class="d-flex gap-2">
@@ -59,6 +59,13 @@
         </div>
         <span class="text-muted small">{{ $leads->total() }} lead(s), best first</span>
     </div>
+    @if(!in_array($tier, ['D', 'R'], true) && $expected['leads'] > 0)
+    <div class="px-3 py-2 border-bottom bg-light-subtle small">
+        <i class="bi bi-graph-up-arrow text-success me-1"></i>If all {{ $expected['leads'] }} lead(s) on this rung get the full sequence, expect about
+        <strong>{{ $expected['replies'] }}</strong> replies, <strong>{{ $expected['interested'] }}</strong> interested and <strong>{{ $expected['deals'] }}</strong> deal(s).
+        <span class="text-muted">Estimates: cold-email benchmarks per kind of evidence, moved toward your own results as replies come in.</span>
+    </div>
+    @endif
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
@@ -67,6 +74,7 @@
                     <th>Company &amp; contact</th>
                     <th>Reach</th>
                     <th>Score / points</th>
+                    <th title="Estimated chance if this lead gets the full email sequence">Success rate</th>
                     <th>Why this rung (evidence)</th>
                     <th>{{ $tier === 'A' ? 'Next action' : 'Blocker → next action' }}</th>
                     <th class="text-end">Act</th>
@@ -100,6 +108,17 @@
                     <td>
                         <span class="badge-lp {{ \App\Support\ScoreBands::badgeClass($lead->overall_score) }}">{{ $lead->overall_score }} / 100</span>
                         <div class="small text-muted mt-1" title="Evidence points (ranking only)"><i class="bi bi-trophy me-1"></i>{{ $lead->win_points }} pts</div>
+                    </td>
+                    <td class="small" style="min-width: 9rem;">
+                        @if($lead->win_interested_chance !== null && !in_array($lead->win_tier, ['D', 'R'], true))
+                            <div><span class="fw-bold text-success">{{ rtrim(rtrim(number_format($lead->win_interested_chance, 1), '0'), '.') }}%</span> interested</div>
+                            <div class="text-muted">{{ rtrim(rtrim(number_format($lead->win_reply_chance, 1), '0'), '.') }}% reply · {{ rtrim(rtrim(number_format($lead->win_deal_chance, 1), '0'), '.') }}% deal</div>
+                            <div class="text-muted" style="font-size:.68rem" title="{{ $lead->win_chance_basis }}">{{ \Illuminate\Support\Str::limit($lead->win_chance_basis, 28) }}</div>
+                        @elseif($lead->win_tier === 'R')
+                            <span class="text-success">Replied</span>
+                        @else
+                            <span class="text-muted">—</span>
+                        @endif
                     </td>
                     <td class="small">
                         <ul class="mb-0 ps-3">
