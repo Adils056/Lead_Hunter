@@ -25,6 +25,9 @@ class ProviderRegistry
         'eu_ted' => ['EU TED (Tenders Electronic Daily)', 'procurement', false, 0, 'https://docs.ted.europa.eu/api/latest/index.html', 'No key for search.'],
         'ats_watchlist' => ['Company job boards (Greenhouse / Lever / Ashby / Workable)', 'hiring_signals', false, 0, 'https://developers.greenhouse.io/job-board.html', 'No key. Boards are found automatically by website audits; manual entries ("greenhouse:token") in an ICP also work.'],
         'hn_hiring' => ['Hacker News: Who is hiring', 'hiring_signals', false, 0, 'https://hn.algolia.com/api', 'No key. Monthly thread via the official Algolia HN API.'],
+        'remoteok' => ['Remote OK jobs', 'hiring_signals', false, 0, 'https://remoteok.com/api', 'No key. Terms: link back to the job and credit Remote OK (kept on every signal).'],
+        'himalayas' => ['Himalayas jobs', 'hiring_signals', false, 0, 'https://himalayas.app/api', 'No key. Remote jobs; the job link is kept on every signal.'],
+        'arbeitnow' => ['Arbeitnow jobs', 'hiring_signals', false, 0, 'https://www.arbeitnow.com/blog/job-board-api', 'No key. Europe (mostly Germany); link back kept.'],
         'public_job_demand' => ['Remotive', 'hiring_signals', false, 0, 'https://github.com/remotive-com/remote-jobs-api', 'Disabled: terms forbid lead collection.'],
         'wikidata_orgs' => ['Wikidata organisations', 'b2b_discovery', false, 0, 'https://query.wikidata.org/', 'No key. CC0 data: companies by industry + country with official website.'],
         'apollo_orgs' => ['Apollo.io Organizations', 'b2b_discovery', true, 1, 'https://docs.apollo.io/', 'Add API key in Integrations.'],
@@ -53,6 +56,7 @@ class ProviderRegistry
     {
         return match ($slug) {
             'osm_overpass', 'wikidata_orgs', 'uk_contracts_finder', 'uk_find_a_tender', 'eu_ted', 'ats_watchlist', 'hn_hiring', 'dns_mx' => true,
+            'remoteok', 'himalayas', 'arbeitnow' => (bool) config("leadpilot.sources.job_feeds.{$slug}", true),
             'ollama' => $this->ollamaReachable(),
             'overture_places' => is_file((string) config('leadpilot.sources.overture_places.duckdb_bin')),
             'public_job_demand' => (bool) config('leadpilot.sources.remotive.enabled'),

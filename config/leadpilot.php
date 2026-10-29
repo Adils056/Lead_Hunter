@@ -211,6 +211,12 @@ return [
             'api_key' => env('PAGESPEED_API_KEY'),
             'enabled' => env('PAGESPEED_ENABLED', false),
         ],
+        // free public job feeds (RemoteOK / Himalayas / Arbeitnow); switch one off with e.g. LEADPILOT_FEED_REMOTEOK=false
+        'job_feeds' => [
+            'remoteok' => (bool) env('LEADPILOT_FEED_REMOTEOK', true),
+            'himalayas' => (bool) env('LEADPILOT_FEED_HIMALAYAS', true),
+            'arbeitnow' => (bool) env('LEADPILOT_FEED_ARBEITNOW', true),
+        ],
         'remotive' => [
             // Remotive's API terms prohibit using listings to collect leads. Keep false unless you have permission.
             'enabled' => env('LEADPILOT_REMOTIVE_ENABLED', false),
@@ -316,7 +322,7 @@ return [
     'providers' => [
         'local_discovery' => ['overture_places', 'osm_overpass', 'google_places'], // Overture has the most contact data; all free-first
         'procurement' => ['uk_contracts_finder', 'uk_find_a_tender', 'eu_ted'],
-        'hiring_signals' => ['ats_watchlist', 'hn_hiring', 'public_job_demand'],
+        'hiring_signals' => ['ats_watchlist', 'hn_hiring', 'remoteok', 'himalayas', 'arbeitnow', 'public_job_demand'],
         'b2b_discovery' => ['wikidata_orgs', 'apollo_orgs'], // free keyless Wikidata first; Apollo only with a key + budget
         'email_verification' => ['dns_mx', 'hunter'],
         'website_performance' => ['pagespeed'],
@@ -371,7 +377,7 @@ return [
             // One profile across all approved countries: companies announcing developer hiring (HN "Who is hiring",
             // and job boards found on audited websites). Hiring is the strongest free buying signal we can see.
             'hiring' => ['label' => 'Companies hiring developers', 'keywords' => ['php', 'laravel', 'web developer', 'full stack'], 'services' => ['laravel_php', 'custom_software'],
-                'type' => 'b2b', 'global' => true, 'sources' => ['hn_hiring', 'ats_watchlist']],
+                'type' => 'b2b', 'global' => true, 'sources' => ['hn_hiring', 'ats_watchlist', 'remoteok', 'himalayas', 'arbeitnow']],
         ],
     ],
 
