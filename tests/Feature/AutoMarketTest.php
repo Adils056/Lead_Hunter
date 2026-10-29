@@ -26,7 +26,7 @@ class AutoMarketTest extends TestCase
         $this->assertSame(($perCountry - 1) + $perCountry + 1, $first['created']);
         $hiring = IcpProfile::where('auto_key', 'global:hiring')->firstOrFail();
         $this->assertEqualsCanonicalizing(['Pakistan', 'United Kingdom'], $hiring->countries);
-        $this->assertSame(['hn_hiring', 'ats_watchlist'], array_keys(app(IcpSearchConfigBuilder::class)->build($hiring)));
+        $this->assertSame(['hn_hiring', 'ats_watchlist', 'remoteok', 'himalayas', 'arbeitnow'], array_keys(app(IcpSearchConfigBuilder::class)->build($hiring)));
         $this->assertSame(0, $svc->sync()['created'], 're-sync never duplicates');
 
         $clinics = IcpProfile::where('auto_key', AutoMarketService::key('Pakistan', 'clinics'))->firstOrFail();

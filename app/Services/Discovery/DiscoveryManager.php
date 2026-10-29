@@ -32,6 +32,9 @@ class DiscoveryManager
         $this->registerAdapter(new UkContractsFinderAdapter());
         $this->registerAdapter(new GreenhouseLeverWatchlistAdapter());
         $this->registerAdapter(new \App\Services\Discovery\Adapters\HnWhoIsHiringAdapter()); // free, keyless (Algolia HN API)
+        $this->registerAdapter(new \App\Services\Discovery\Adapters\RemoteOkAdapter()); // free public job feeds (attribution kept)
+        $this->registerAdapter(new \App\Services\Discovery\Adapters\HimalayasAdapter());
+        $this->registerAdapter(new \App\Services\Discovery\Adapters\ArbeitnowAdapter());
         $this->registerAdapter(new \App\Services\Discovery\Adapters\WikidataOrgsAdapter()); // free, keyless B2B (CC0)
         $this->registerAdapter(new ApolloOrgDiscoveryAdapter());
         $this->registerAdapter(new PublicJobBoardDemandAdapter()); // disabled unless LEADPILOT_REMOTIVE_ENABLED

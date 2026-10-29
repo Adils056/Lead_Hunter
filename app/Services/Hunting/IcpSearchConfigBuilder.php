@@ -89,7 +89,7 @@ class IcpSearchConfigBuilder
                     'auto' => true, // also re-check boards that website audits found on companies' own sites
                     'limit' => $limit,
                 ],
-                'hn_hiring' => [
+                'hn_hiring', 'remoteok', 'himalayas', 'arbeitnow' => [
                     'countries' => $icp->list('countries'),
                     'limit' => $limit,
                 ],
