@@ -28,6 +28,10 @@ class PeopleExtractor
 
     protected ?string $companyName = null;
 
+    protected const GENERIC_ORG_WORDS = ['the', 'and', 'inc', 'llc', 'ltd', 'limited', 'corp', 'company', 'group', 'labs', 'lab', 'health', 'healthcare',
+        'center', 'centre', 'centers', 'medical', 'clinic', 'services', 'solutions', 'systems', 'technologies', 'technology', 'tech', 'software', 'digital',
+        'global', 'international', 'partners', 'associates', 'agency', 'studio', 'consulting', 'family', 'community', 'care', 'law', 'dental', 'hospital'];
+
     protected const NAME = "(?:(?:Dr|Mr|Mrs|Ms|Prof|Engr)\.?\s+)?[A-Z][a-z'’\-]{1,20}(?:\s+[A-Z][a-z'’\-]{1,20}){1,2}";
 
     /**
@@ -112,10 +116,12 @@ class PeopleExtractor
         if ($isRoleWords || !preg_match('/\p{Lu}/u', $org)) {
             return false;
         }
-        $own = strtolower((string) $this->companyName);
+        // the organisation is this company only when a distinctive word of its name is a word of the company's name
+        // ("CTO at Tolmo"); shared generic words do not count ("West Cecil Health Center" vs "Relevant Healthcare")
+        $words = fn (string $t) => array_diff(array_filter(preg_split('/[^a-z0-9]+/', strtolower($t)), fn ($w) => strlen($w) > 2), self::GENERIC_ORG_WORDS);
+        $own = $words((string) $this->companyName);
 
-        return $own === '' || !collect(preg_split('/[^a-z0-9]+/', strtolower($org)))->filter(fn ($w) => strlen($w) > 2)
-            ->contains(fn ($w) => str_contains($own, $w));
+        return !$own || !array_intersect($words($org), $own);
     }
 
     /** A published on-domain address that is plainly this person's: jane@, jane.doe@, janedoe@, jdoe@, j.doe@, jane_doe@. */

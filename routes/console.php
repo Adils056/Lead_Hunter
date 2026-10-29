@@ -297,7 +297,8 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
     $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('website')
         ->whereHas('leads', fn ($q) => $q->whereIn('contact_status', ['generic_inbox', 'needs_enrichment']))
         ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
-        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"people_crawl":' . \App\Services\Audit\WebsiteAuditService::PEOPLE_CRAWL_VERSION . '%'))
+        // JSON operators, not LIKE: MySQL stores JSON as {"key": value} (with a space), SQLite as written
+        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found->people_crawl', '>=', \App\Services\Audit\WebsiteAuditService::PEOPLE_CRAWL_VERSION))
         ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
         ->limit((int) $this->option('limit'))->get();
 
@@ -363,7 +364,7 @@ Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--secon
     $deadline = microtime(true) + (int) $this->option('seconds');
     $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('domain')
         ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
-        ->whereHas('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"people":[{%'))
+        ->whereHas('websiteAudits', fn ($q) => $q->whereJsonLength('contacts_found->people', '>', 0))
         ->with('latestWebsiteAudit')->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
         ->limit((int) $this->option('limit') * 3)->get();
 

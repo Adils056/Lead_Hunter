@@ -69,6 +69,9 @@ class FindPeopleTest extends TestCase
         // live case (Tolmo, Relevant Healthcare): backers and customers listed with their own company after the role
         $html = '<body><p>Pierre Betouin, Cofounder &amp; CEO</p><p>Renaud Deraison, Founder, Tenable</p><p>Olivier Pomel, Co-founder &amp; CEO, Datadog</p>'
             . '<p>Lindsay Farrell, CEO, Open Door Family Medical Centers</p><p>Jacob Hodes, Co-founder, advisor</p><p>Sam Lee, CTO at Tolmo</p></body>';
+        $health = '<body><p>Holly Preston, COO, West Cecil Health Center</p><p>Brandon Hamilton, CEO, Co-founder</p><p>Ann Roe, CTO at Relevant</p></body>';
+        $this->assertSame(['Brandon Hamilton', 'Ann Roe'], array_column((new \App\Services\Audit\PeopleExtractor())->extract($health, 'https://relevant.test', [], 'Relevant Healthcare'), 'name'),
+            'a shared generic word ("health") does not make another organisation this company');
         $names = array_column((new \App\Services\Audit\PeopleExtractor())->extract($html, 'https://tolmo.test', [], 'Tolmo'), 'name');
         sort($names);
 
