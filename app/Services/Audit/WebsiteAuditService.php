@@ -542,6 +542,8 @@ class WebsiteAuditService
             'account suspended' => 'a hosting suspension page', 'this domain is for sale' => 'a domain-for-sale page', 'buy this domain' => 'a domain-for-sale page',
             'domain is parked' => 'a parked-domain page', 'parked free' => 'a parked-domain page', 'future home of' => 'a placeholder page',
             'website coming soon' => 'a coming-soon page', 'site under construction' => 'an under-construction page', 'index of /' => 'a bare directory listing',
+            'this domain has been registered' => 'a registrar placeholder page', 'domain names from heart internet' => 'a hosting placeholder page',
+            'web hosting, reseller hosting' => 'a hosting placeholder page',
             'apache2 default page' => 'the web server default page', 'welcome to nginx' => 'the web server default page', 'iis windows server' => 'the web server default page',
         ] as $needle => $what) {
             if (str_contains($head, $needle)) {

@@ -142,7 +142,9 @@ class WebsiteFinder
         }
         $site = (parse_url($final, PHP_URL_SCHEME) ?: 'https') . '://' . $host;
 
-        $label = $this->brandText($html);
+        // a host's placeholder titles itself with the domain ("Heart Internet | stgeorgesprimaryschool.co.uk"):
+        // the domain name is not the business naming itself, so domain-like words do not count as the name
+        $label = trim(preg_replace('/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i', ' ', $this->brandText($html)));
         $tokens = $this->tokens($company->name);
         $compact = preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii($label)));
         $words = preg_split('/[^a-z0-9]+/', strtolower(Str::ascii($label)), -1, PREG_SPLIT_NO_EMPTY);

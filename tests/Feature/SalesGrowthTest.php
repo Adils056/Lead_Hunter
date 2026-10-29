@@ -27,7 +27,7 @@ class SalesGrowthTest extends TestCase
         parent::setUp();
         config(['leadpilot.sources.pagespeed.enabled' => false, 'leadpilot.sources.website_crawler.dns_overrides' => [
             'zyqordental.co.uk' => ['93.184.216.34'], 'parkedzyqor.co.uk' => ['93.184.216.35'], 'vexlomarine.com' => ['93.184.216.36'],
-            'quorvanbuild.com' => ['93.184.216.37'], 'plimtexhvac.com' => ['93.184.216.38'],
+            'quorvanbuild.com' => ['93.184.216.37'], 'plimtexhvac.com' => ['93.184.216.38'], 'stgeorgeszyq.co.uk' => ['93.184.216.39'],
         ]]);
     }
 
@@ -45,6 +45,7 @@ class SalesGrowthTest extends TestCase
             'https://vexlomarine.com/*' => Http::response($this->page('Vexlo Marine', 'Boat repairs in Miami, Florida'), 200),
             'https://quorvanbuild.com/*' => Http::response($this->page('Home', 'Builders'), 200),
             'https://plimtexhvac.com/*' => Http::response($this->page('Welcome', 'Call us on +92 42 3576 1234'), 200),
+            'https://stgeorgeszyq.co.uk/*' => Http::response($this->page('Hosted by Fasthosts | stgeorgeszyq.co.uk'), 200),
             '*' => Http::response('', 404),
         ]);
         $finder = app(WebsiteFinder::class);
@@ -72,6 +73,9 @@ class SalesGrowthTest extends TestCase
 
         $phone = Company::create(['name' => 'Plimtex HVAC', 'country' => 'Pakistan', 'public_phone' => '042-35761234']);
         $this->assertSame('found', $finder->find($phone)['outcome'], 'its phone number is on the page');
+
+        // 29 Oct live: the host's placeholder named itself with the domain; a domain in the title is not the business
+        $this->assertSame('not_found', $finder->find(Company::create(['name' => 'St Georges Zyq', 'country' => 'United Kingdom']))['outcome']);
 
         $urdu = Company::create(['name' => 'روياٹ لگژری ہوٹل', 'country' => 'Pakistan']);
         $this->assertSame('no_name', $finder->find($urdu)['outcome']);
