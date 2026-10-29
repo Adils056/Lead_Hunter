@@ -60,7 +60,7 @@ class ProspectIngestor
 
             return ['company' => null, 'created' => false, 'excluded' => $reason];
         }
-        if (($reason = \App\Support\ChainBrand::reason($name, $domain))
+        if (($reason = \App\Support\ChainBrand::reason($name, $domain, $data['website'] ?? null))
             || ($this->icp && ($reason = $this->icp->exclusionReason($domain, $name, $data['description'] ?? null)))) {
             $result->excludedCount++;
             $result->recordItem(['company' => $name, 'excluded' => $reason]);
