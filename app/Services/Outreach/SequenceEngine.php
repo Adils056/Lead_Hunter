@@ -16,6 +16,7 @@ use App\Services\Autopilot\WorkflowControlService;
 use App\Services\CampaignDeliveryService;
 use App\Services\EligibilityGateService;
 use App\Services\Sales\ConversionAssistantService;
+use App\Support\EmailStatus;
 use App\Support\ScoreBands;
 use App\Support\LocalTime;
 use Carbon\Carbon;
@@ -214,7 +215,8 @@ class SequenceEngine
             ->where('sent_at', '>=', now(config('leadpilot.timezone'))->startOfDay()->utc())->count();
         $cap = OutreachSetting::current()->firstTouchCap();
 
-        $due = CampaignRecipient::with('campaign', 'lead')->where('status', 'approved')
+        // 'queued' = deferred by the daily quota; it is approved work and must go out once due (it used to be stranded)
+        $due = CampaignRecipient::with('campaign', 'lead')->whereIn('status', ['approved', 'queued'])
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->where(fn ($q) => $q->whereNull('scheduled_at')->orWhere('scheduled_at', '<=', now()))
             ->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit * 10)->get();
@@ -258,6 +260,9 @@ class SequenceEngine
     public function dispatch(CampaignRecipient $rec, bool $approvedByHuman): array
     {
         $rec->refresh();
+        if ($rec->status === 'queued') {
+            $rec->update(['status' => 'approved']); // deferred earlier (quota / spacing), already approved
+        }
         if ($rec->status !== 'approved') {
             return ['sent' => false, 'reason' => "recipient is {$rec->status}, not approved", 'message_id' => null];
         }
@@ -270,9 +275,12 @@ class SequenceEngine
         $recent = CampaignRecipient::where('lead_id', $rec->lead_id)->where('id', '!=', $rec->id)
             ->whereIn('status', ['sent', 'delivered', 'opened', 'replied'])->where('sent_at', '>=', now()->subDay())->exists();
         if ($recent) {
-            $rec->update(['status' => 'queued', 'scheduled_at' => now()->addDay(), 'error_message' => 'Deferred: another email went to this lead in the last 24h.']);
+            $rec->update(['scheduled_at' => now()->addDay(), 'error_message' => 'Deferred: another email went to this lead in the last 24h.']);
 
             return ['sent' => false, 'reason' => 'deferred (24h spacing)', 'message_id' => null];
+        }
+        if ($why = $this->companyConflict($rec)) {
+            return ['sent' => false, 'reason' => $why, 'message_id' => null];
         }
         if ($approvedByHuman && !$this->inSendingWindow(null, $rec->lead)) {
             $rec->update(['status' => 'approved', 'scheduled_at' => $this->nextSendTime(null, $rec->lead)]);
@@ -294,6 +302,39 @@ class SequenceEngine
         }
 
         return ['sent' => $ok, 'reason' => $ok ? null : ($rec->error_message ?: $rec->status), 'message_id' => $rec->rfc_message_id];
+    }
+
+    /**
+     * One conversation per company. A shared-inbox follow-up stops once a named decision maker at the company has a
+     * usable address (the founder gets the conversation, not info@); a first email to a second person waits until
+     * `company_gap_days` after the company's last email (rescheduled, never dropped). Null = may send now.
+     */
+    protected function companyConflict(CampaignRecipient $rec): ?string
+    {
+        $lead = $rec->lead;
+        if (!$lead || !$lead->company_id) {
+            return null;
+        }
+        if ($rec->sequence_step > 1 && $lead->contact_status === 'generic_inbox'
+            && Lead::where('company_id', $lead->company_id)->where('id', '!=', $lead->id)->where('contact_status', 'identified')
+                ->whereNotNull('email')->where('email_verification_status', '!=', EmailStatus::INVALID)->exists()) {
+            $rec->update(['status' => 'cancelled', 'error_message' => 'Stopped: a named decision maker at this company takes over the conversation.']);
+
+            return 'cancelled — the named decision maker at this company gets the conversation instead of the shared inbox';
+        }
+        if ($rec->sequence_step === 1) {
+            $gap = (int) config('leadpilot.outreach.company_gap_days', 10);
+            $last = CampaignRecipient::whereHas('lead', fn ($q) => $q->where('company_id', $lead->company_id)->where('id', '!=', $lead->id))
+                ->whereNotNull('sent_at')->max('sent_at');
+            if ($last && Carbon::parse($last)->gt(now()->subDays($gap))) {
+                $at = Carbon::parse($last)->addDays($gap);
+                $rec->update(['scheduled_at' => $at, 'error_message' => "Waiting: this company was emailed " . Carbon::parse($last)->diffForHumans() . "; one conversation per company."]);
+
+                return 'deferred — company emailed ' . Carbon::parse($last)->diffForHumans() . ', next email to it ' . $at->toDateString();
+            }
+        }
+
+        return null;
     }
 
     /** Working hours (config sending_hours, e.g. 9-17) on a working day, on the PROSPECT's clock when a lead is given. */
