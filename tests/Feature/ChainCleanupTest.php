@@ -36,4 +36,21 @@ class ChainCleanupTest extends TestCase
         $this->assertSame(['not_a_fit', 'not_a_fit', 'new'], [$l1->fresh()->lifecycle_stage, $l2->fresh()->lifecycle_stage, $l3->fresh()->lifecycle_stage]);
         $this->assertSame('cancelled', $draft->fresh()->status);
     }
+
+    public function test_chain_store_locator_pages_are_archived(): void
+    {
+        // live: P.F. Chang's / Shake Shack in Riyadh, audited page = the brand's Yext store locator
+        $pfc = Company::create(['name' => 'Riyadh Park Diner', 'website' => 'https://pfchangs.example/', 'domain' => 'pfchangs.example', 'country' => 'Saudi Arabia']);
+        \App\Models\WebsiteAudit::create(['company_id' => $pfc->id, 'url' => 'https://pfchangs.example/', 'final_url' => 'https://www.pfchangsme.com/en/storelocator/pfc-riyadh-park?y_source=1_MTU',
+            'status' => 'completed', 'opportunity_score' => 22, 'audited_at' => now()]);
+        $shack = Company::create(['name' => 'Shake Shack', 'country' => 'Saudi Arabia']);
+        $multi = Company::create(['name' => 'Smile Dental', 'website' => 'https://smile.example/locations/', 'domain' => 'smile.example', 'country' => 'Pakistan']);
+        $lead = Lead::create(['company_id' => $pfc->id, 'full_name' => 'x', 'email' => 'info@pfchangs.example', 'lifecycle_stage' => 'new']);
+
+        $this->assertArrayHasKey('chain_brand', app(EligibilityGateService::class)->evaluate($lead)->failedChecks);
+        (require base_path('database/migrations/2026_10_29_000006_archive_chain_locator_pages.php'))->up();
+
+        $this->assertSame(['archived', 'archived', 'prospect'], [$pfc->fresh()->status, $shack->fresh()->status, $multi->fresh()->status]);
+        $this->assertSame('not_a_fit', $lead->fresh()->lifecycle_stage);
+    }
 }

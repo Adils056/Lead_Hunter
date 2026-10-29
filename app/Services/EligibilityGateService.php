@@ -124,7 +124,8 @@ class EligibilityGateService
             // (seen live: hiring@ answered "we're not working with external recruiters or agencies")
             $result->fail('role_inbox', "{$lead->email} is a {$local}@ inbox (jobs, legal, finance or no-reply), not someone who buys services.", 'not_a_fit');
         }
-        if (!$isPilotRecipient && $lead->company && ($chain = \App\Support\ChainBrand::reason($lead->company->name, $lead->company->domain))) {
+        if (!$isPilotRecipient && $lead->company && ($chain = \App\Support\ChainBrand::reason($lead->company->name, $lead->company->domain, $lead->company->website)
+            ?? \App\Support\ChainBrand::reason(null, null, $lead->company->latestWebsiteAudit?->final_url))) {
             // imported before the chain list knew them (FedEx, UPS, Schwab…): head office buys, the branch inbox never does
             $result->fail('chain_brand', $chain . '.', 'not_a_fit');
         }
