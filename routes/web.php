@@ -87,6 +87,13 @@ Route::middleware(['auth'])->group(function () {
 
     // Settings & Integrations (Protected by Admin Policy)
     Route::get('/settings/integrations', [IntegrationController::class, 'index'])->name('settings.integrations');
+    Route::get('/settings/ai-models', [\App\Http\Controllers\AiProviderController::class, 'index'])->name('settings.ai-providers');
+    Route::post('/settings/ai-models', [\App\Http\Controllers\AiProviderController::class, 'store'])->name('settings.ai-providers.store');
+    Route::post('/settings/ai-models/recommended', [\App\Http\Controllers\AiProviderController::class, 'recommended'])->name('settings.ai-providers.recommended');
+    Route::put('/settings/ai-models/{provider}', [\App\Http\Controllers\AiProviderController::class, 'update'])->name('settings.ai-providers.update');
+    Route::post('/settings/ai-models/{provider}/toggle', [\App\Http\Controllers\AiProviderController::class, 'toggle'])->name('settings.ai-providers.toggle');
+    Route::post('/settings/ai-models/{provider}/test', [\App\Http\Controllers\AiProviderController::class, 'test'])->name('settings.ai-providers.test')->middleware('throttle:20,1');
+    Route::delete('/settings/ai-models/{provider}', [\App\Http\Controllers\AiProviderController::class, 'destroy'])->name('settings.ai-providers.destroy');
     Route::put('/settings/integrations/{integration}', [IntegrationController::class, 'update'])->name('settings.integrations.update');
     Route::post('/settings/integrations/{integration}/test', [IntegrationController::class, 'testConnection'])->name('settings.integrations.test');
 

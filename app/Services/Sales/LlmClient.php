@@ -9,8 +9,8 @@ use App\Services\Integrations\ProviderRegistry;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Provider-agnostic JSON completion with fallback: free Gemini first (when keyed), then local Ollama (free, keyless),
- * then OpenAI within budget.
+ * Provider-agnostic JSON completion with fallback: the owner's AI model list first (Settings → AI Models, in priority
+ * order within daily limits), then free Gemini (when keyed), then local Ollama (free, keyless), then OpenAI within budget.
  * Callers must only pass PUBLIC business facts — Gemini's free tier may use inputs to improve Google products.
  */
 class LlmClient
@@ -19,6 +19,10 @@ class LlmClient
     /** @param string[] $exclude provider slugs a caller does not trust for this task (e.g. ['ollama'] for open-ended research) */
     public function json(string $system, string $user, array $schema, int $maxTokens = 600, array $exclude = []): ?array
     {
+        // the owner's own list of models (Settings → AI Models), free tiers first, each within its daily limit
+        if (!in_array('chain', $exclude, true) && ($hit = app(AiProviderChain::class)->json($system, $user, $schema, $maxTokens))) {
+            return $hit;
+        }
         $registry = app(ProviderRegistry::class);
         $candidates = array_values(array_diff(array_unique(array_merge(
             $registry->isConfigured('gemini') ? ['gemini'] : [],
