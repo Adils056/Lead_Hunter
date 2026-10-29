@@ -143,4 +143,12 @@ class AutopilotController extends Controller
         $this->admin();
         return view('autopilot.performance', ['r' => $report->build((int) $request->input('days', 90)), 'states' => LeadStateService::STATES]);
     }
+
+    public function weekly(\App\Services\Outreach\WeeklyReview $review)
+    {
+        $this->admin();
+        $r = $review->build();
+
+        return view('autopilot.weekly', ['r' => $r, 'summary' => $review->summary($r)]);
+    }
 }

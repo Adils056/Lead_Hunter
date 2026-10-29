@@ -368,6 +368,71 @@ Artisan::command('leadpilot:reaudit-shells {--seconds=300 : Stop after this many
     $this->info('Re-audited ' . array_sum($out) . ' of ' . $ids->count() . ' tiny-page audits: ' . json_encode($out));
 })->purpose('Re-audit companies whose audit came from a tiny redirect / JavaScript-only page');
 
+Artisan::command('leadpilot:find-websites {--limit=60 : Companies to try} {--seconds=600 : Stop after this many seconds}', function (\App\Services\Enrichment\WebsiteFinder $finder, \App\Services\Audit\WebsiteAuditService $audits, \App\Services\LeadScoringService $scoring) {
+    // Companies listed without a website cannot be audited, so they never reach the ladder's email rungs. Find the
+    // site (own e-mail domain, then name + country domain), keep it only with proof, then audit it right away: the
+    // audit reads the contact / team pages, which is where the inbox and the decision-maker are found.
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNull('website')->whereHas('leads')
+        ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')->orderByDesc('id')
+        ->lazy(200); // walk past companies already tried this month (cache), instead of stalling on the same top rows
+
+    $done = $found = $audited = 0;
+    $outcomes = [];
+    foreach ($companies as $c) {
+        if (microtime(true) > $deadline || $done >= (int) $this->option('limit')) {
+            break;
+        }
+        if (\Illuminate\Support\Facades\Cache::has("website_finder:tried:{$c->id}")) {
+            continue;
+        }
+        $done++;
+        $r = $finder->find($c);
+        \Illuminate\Support\Facades\Cache::put("website_finder:tried:{$c->id}", $r['outcome'], now()->addDays(30));
+        if ($r['outcome'] === 'found' && ($why = \App\Support\ChainBrand::reason($c->name, \App\Models\Company::normalizeDomain($r['website']), $r['website']))) {
+            $r['outcome'] = 'chain';
+            $this->line("  {$c->id} {$c->name}: {$r['website']} is a chain ({$why}); not kept");
+        }
+        $outcomes[$r['outcome']] = ($outcomes[$r['outcome']] ?? 0) + 1;
+        if ($r['outcome'] !== 'found') {
+            continue;
+        }
+        $found++;
+        $c->update(['website' => $r['website'], 'domain' => $c->domain ?: \App\Models\Company::normalizeDomain($r['website'])]);
+        \App\Models\DataProvenance::record($c, ['website' => $r['website']], 'website_finder', $r['website'], 'crawl', 80);
+        $this->line("  {$c->id} {$c->name}: {$r['website']} ({$r['evidence']})");
+        if (microtime(true) < $deadline) {
+            try {
+                $audits->audit($c->fresh());
+                $audited++;
+            } catch (\Throwable $e) {
+                $this->line('    audit: ' . mb_substr($e->getMessage(), 0, 80));
+            }
+            foreach ($c->leads()->get() as $lead) {
+                $scoring->evaluateLead($lead);
+            }
+        }
+    }
+    $this->info("Tried {$done} companies without a website: {$found} found and kept, {$audited} audited. " . json_encode($outcomes));
+})->purpose('Find the website of companies listed without one (kept only with proof: own e-mail domain, name in title, or phone on page)');
+
+Artisan::command('leadpilot:weekly-review {--no-notify : Print only}', function (\App\Services\Outreach\WeeklyReview $review) {
+    $r = $review->build();
+    $this->info('Weekly review ' . $r['from']->timezone(config('leadpilot.timezone'))->format('j M') . ' – ' . $r['end']->timezone(config('leadpilot.timezone'))->format('j M'));
+    $this->table(['Activity', 'Count'], collect($r['activity'])->map(fn ($v, $k) => [str_replace('_', ' ', $k), $v])->values()->all());
+    $this->table(['Kind of lead', 'Sent', 'Replied', 'Reply %', 'Benchmark %', 'Verdict', 'In A/B'], collect($r['segments'])->map(fn ($s) => [
+        $s['label'], $s['sent'], $s['replied'], $s['reply_rate'] ?? '–', $s['benchmark_reply'], str_replace('_', ' ', $s['verdict']), $s['ready']])->all());
+    $this->line('Focus: ' . $r['focus']);
+    if (!$this->option('no-notify')) {
+        app(\App\Services\Autopilot\Notifier::class)->notifyRole('admin', [
+            'title' => 'Weekly review: ' . $r['activity']['replies'] . ' replies, ' . $r['activity']['interested'] . ' interested',
+            'priority' => 'normal', 'what' => $review->summary($r),
+            'why' => 'The Monday review: decide where to focus outreach this week.',
+            'recommended' => $r['focus'], 'url' => route('autopilot.weekly'), 'role' => 'admin',
+        ], 'weekly-review:' . $r['end']->format('o-W'));
+    }
+})->purpose('The Monday review: sends, replies, own success rate per kind of lead vs benchmark, lead-pool growth, focus');
+
 Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
     // Decision-makers named on a company's own site but with no published address: try the common patterns on the
     // company's mail server and keep one only when that mailbox is accepted and a random one is not (no mail is sent).
@@ -375,8 +440,8 @@ Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--secon
     $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('domain')
         ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
         ->whereHas('websiteAudits', fn ($q) => $q->whereJsonLength('contacts_found->people', '>', 0))
-        ->with('latestWebsiteAudit')->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
-        ->limit((int) $this->option('limit') * 3)->get();
+        ->with('latestWebsiteAudit')->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')->orderByDesc('id')
+        ->lazy(200); // walk past companies already tried this month instead of stalling on the same top rows
 
     $outcomes = [];
     $done = 0;
@@ -384,12 +449,19 @@ Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--secon
         if (microtime(true) > $deadline || $done >= (int) $this->option('limit')) {
             break;
         }
-        $person = collect($c->latestWebsiteAudit?->contacts_found['people'] ?? [])->first(fn ($p) => empty($p['email']));
-        if (!$person || \Illuminate\Support\Facades\Cache::has("email_finder:tried:{$c->id}")) {
+        // most senior first (PeopleExtractor rank: owner / founder above directors): up to 3 people, the next only when the server said
+        // "no such mailbox" for the previous (catch-all / unreachable answer for one answers for all)
+        $people = collect($c->latestWebsiteAudit?->contacts_found['people'] ?? [])->filter(fn ($p) => empty($p['email']))->sortByDesc('rank')->values()->all();
+        if (!$people || \Illuminate\Support\Facades\Cache::has("email_finder:tried:{$c->id}")) {
             continue;
         }
         $done++;
-        $r = $finder->find($person['first_name'], $person['last_name'], $c->domain);
+        foreach (array_slice($people, 0, 3) as $person) {
+            $r = $finder->find($person['first_name'] ?? '', $person['last_name'] ?? '', $c->domain);
+            if (!in_array($r['outcome'], ['not_found', 'bad_name'], true)) {
+                break;
+            }
+        }
         \Illuminate\Support\Facades\Cache::put("email_finder:tried:{$c->id}", $r['outcome'], now()->addDays($r['outcome'] === 'cannot_probe' ? 1 : 30));
         $outcomes[$r['outcome']] = ($outcomes[$r['outcome']] ?? 0) + 1;
         if ($r['outcome'] !== 'found') {
@@ -703,6 +775,10 @@ Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to downloa
     return 0;
 })->purpose('Download Overture places for the searched cities ahead of time (once per monthly release)');
 
+Schedule::command('leadpilot:find-websites --limit=80 --seconds=900')->dailyAt('02:30')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
+// second pass for decision-makers that daytime audits (autopilot, website finder) put on the record
+Schedule::command('leadpilot:find-emails --limit=40 --seconds=420')->dailyAt('14:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
+Schedule::command('leadpilot:weekly-review')->weeklyOn(1, '09:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();

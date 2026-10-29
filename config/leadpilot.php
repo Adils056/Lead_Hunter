@@ -263,6 +263,12 @@ return [
         'default_role' => env('LEADPILOT_REGISTRATION_ROLE', 'sales'),
     ],
 
+    // Website finder (leadpilot:find-websites): per-request timeout and how many live candidates one company may cost
+    'website_finder' => [
+        'timeout' => (int) env('LEADPILOT_WEBSITE_FINDER_TIMEOUT', 8),
+        'max_candidates' => (int) env('LEADPILOT_WEBSITE_FINDER_MAX', 8),
+    ],
+
     'free_mail_domains' => [
         'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com', 'icloud.com', 'aol.com',
         'proton.me', 'protonmail.com', 'gmx.com', 'yandex.com', 'mail.com', 'msn.com', 'ymail.com',
