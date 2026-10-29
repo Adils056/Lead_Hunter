@@ -43,7 +43,10 @@ class ReplyClassifier
             return $this->out('out_of_office', 95, 'Auto-reply / out of office. Pause the sequence; resume after return date.', false, null, ['return_date_text' => $return]);
         }
 
-        $negated = preg_match('/\b(not|no longer|isn\'t|aren\'t|don\'t|do not|won\'t|never)\s+(really\s+)?(interested|looking|in need|need)\b/', $t);
+        $negated = preg_match('/\b(not|no longer|isn\'t|aren\'t|don\'t|do not|won\'t|never)\s+(really\s+)?(interested|looking|in need|need)\b/', $t)
+            // "we're not working with external recruiters, staffing agencies, or contract teams" (seen live, was "uncertain")
+            || preg_match('/\b(not|aren\'t|are not|don\'t|do not|won\'t|never)\s+(currently\s+)?(working|work|partnering|engaging|using|hiring)\s+(with\s+)?(any\s+)?(external|outside|third[- ]party|offshore)?\s*(recruiters?|agenc(y|ies)|vendors?|contractors?|freelancers?|staffing|outsourc\w*|consultants?|contract teams?)\b/', $t)
+            || preg_match('/\b(no|without)\s+(recruiters?|agenc(y|ies)|solicitations?|vendors?|outsourcing)\b|\b(remove me|take me off|stop (emailing|contacting) (me|us))\b/', $t);
         if ($negated || preg_match('/\b(no thanks|no thank you|not at this time|not right now|please pass|we\'?ll pass|not a (good )?fit|no need|not relevant)\b/', $t)) {
             return $this->out('not_interested', 92, 'Prospect declined. Stop the sequence; optionally re-engage in 6 months if a new trigger appears.', false,
                 "Hi {$name},\n\nUnderstood — thanks for letting me know. I won't follow up further.\n\nAll the best.");

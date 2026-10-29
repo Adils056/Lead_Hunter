@@ -18,7 +18,7 @@ class OutboxController extends Controller
 
         $stats = [
             'sent' => CampaignRecipient::whereNotNull('sent_at')->count(),
-            'today' => CampaignRecipient::where('sent_at', '>=', now()->startOfDay())->count(),
+            'today' => CampaignRecipient::where('sent_at', '>=', now(config('leadpilot.timezone', 'Asia/Karachi'))->startOfDay()->utc())->count(), // the business day, like Autopilot
             'replied' => CampaignRecipient::whereNotNull('sent_at')->whereHas('replies')->count(),
             'bounced' => CampaignRecipient::whereNotNull('sent_at')->where(fn ($w) => $w->whereNotNull('bounced_at')->orWhere('status', 'bounced'))->count(),
         ];

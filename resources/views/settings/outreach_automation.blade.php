@@ -147,6 +147,11 @@
                         <input type="text" name="sending_timezone" class="form-control" value="{{ old('sending_timezone', $settings->sending_timezone) }}" required>
                     </div>
                 </div>
+                <div class="alert alert-info small py-2 mb-3">
+                    <i class="bi bi-globe2 me-1"></i>This window applies to <strong>manual campaigns</strong> only. Autopilot e-mails go out between
+                    {{ config('leadpilot.autopilot.sending_hours')[0] }}:00 and {{ config('leadpilot.autopilot.sending_hours')[1] }}:00 on working days
+                    <strong>in each prospect's own time zone</strong> (a New York lead at 9 am New York time = 6 pm Pakistan time).
+                </div>
 
                 <div class="row g-3 mb-2">
                     <div class="col-md-6">

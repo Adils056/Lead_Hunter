@@ -13,6 +13,9 @@ use Carbon\Carbon;
 
 class EligibilityGateService
 {
+    /** Local parts of inboxes that never buy services; '+tag' / '.team' variants included. */
+    public const ROLE_INBOX = '/^(hiring|jobs?|careers?|recruit(ing|ment|er|ers)?|talent|hr|people|underwriting|claims|no-?reply|do-?not-?reply|privacy|legal|abuse|postmaster|press|media|investors?|ir|billing|invoices?|accounts-?payable)([+._-].*)?$/';
+
     /**
      * The website we audited must be this business's site: a directory listing sometimes carries another business's URL,
      * and the e-mail would then claim gaps on a site the prospect does not own. Free-mail addresses prove nothing either way.
@@ -115,6 +118,11 @@ class EligibilityGateService
             && strtolower(trim((string) $lead->email)) === strtolower(trim((string) $settings->controlled_pilot_recipient));
         if (!$isPilotRecipient && ($why = self::websiteMismatch($lead))) { // the owner's own pilot address never matches a prospect site
             $result->fail('website_match', $why, 'ready_for_review');
+        }
+        if (!$isPilotRecipient && ($local = strtolower((string) strstr((string) $lead->email, '@', true))) !== '' && preg_match(self::ROLE_INBOX, $local)) {
+            // job-application, legal, finance and no-reply inboxes are read by people who do not buy services
+            // (seen live: hiring@ answered "we're not working with external recruiters or agencies")
+            $result->fail('role_inbox', "{$lead->email} is a {$local}@ inbox (jobs, legal, finance or no-reply), not someone who buys services.", 'not_a_fit');
         }
         if (\App\Support\PublicSector::matches($lead->email, $lead->company?->website, $lead->company?->domain)) {
             $result->fail('public_sector', 'Public-sector body (government, state school, university or health service): they buy through procurement, not cold e-mail.', 'not_a_fit');

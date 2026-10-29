@@ -91,7 +91,7 @@ class HiringSignalsTest extends TestCase
         BuyingSignal::create(['company_id' => $c->id, 'signal_type' => 'developer_hiring', 'title' => 'Hiring developers (Hacker News)', 'confidence' => 85,
             'source_url' => 'https://news.ycombinator.com/item?id=1', 'evidence_text' => 'Senior Laravel developer, Austin TX', 'relevant_service' => 'laravel_php',
             'observed_date' => now()->toDateString(), 'expiry_date' => now()->addDays(45)->toDateString()]);
-        $lead = Lead::create(['company_id' => $c->id, 'full_name' => 'Bloom Dental — general inbox', 'email' => 'hiring@bloomdental.com', 'country' => 'United States',
+        $lead = Lead::create(['company_id' => $c->id, 'full_name' => 'Bloom Dental — general inbox', 'email' => 'hello@bloomdental.com', 'country' => 'United States',
             'contact_status' => 'generic_inbox', 'email_verification_status' => 'verified', 'source_name' => 'Hacker News: Who is hiring']);
 
         app(\App\Services\LeadScoringService::class)->evaluateLead($lead->fresh());
@@ -100,6 +100,9 @@ class HiringSignalsTest extends TestCase
 
         $this->assertGreaterThanOrEqual(\App\Models\OutreachSetting::current()->min_lead_score, $lead->overall_score, 'missing RFP / growth news is not counted against a hiring company');
         $this->assertSame('A', $rung['tier'], json_encode($rung['blockers']));
+        $lead->update(['email' => 'hiring@bloomdental.com']);
+        $this->assertArrayHasKey('role_inbox', app(\App\Services\EligibilityGateService::class)->evaluate($lead->fresh(), null, null, false)->failedChecks,
+            'a job-applications inbox is not someone who buys services');
     }
 
     public function test_job_board_found_on_a_website_is_checked_by_the_hiring_source(): void

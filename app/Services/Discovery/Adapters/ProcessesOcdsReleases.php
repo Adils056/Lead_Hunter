@@ -7,7 +7,7 @@ use App\Services\Discovery\ProspectIngestor;
 
 /**
  * Shared OCDS (Open Contracting Data Standard) release handling for UK Contracts Finder and Find a Tender.
- * Keeps only OPEN IT tenders (CPV 72xxxxxx / 48xxxxxx or keyword match on word boundaries); never invents a person.
+ * Keeps only OPEN software / web tenders (App\\Support\\TenderRelevance); never invents a person.
  */
 trait ProcessesOcdsReleases
 {
@@ -20,18 +20,9 @@ trait ProcessesOcdsReleases
         $title = trim((string) ($tender['title'] ?? ''));
         $desc = trim((string) ($tender['description'] ?? ''));
         $cpv = (string) ($tender['classification']['id'] ?? '');
-        $hay = strtolower($title . ' ' . $desc);
 
-        $isIt = str_starts_with($cpv, '72') || str_starts_with($cpv, '48');
-        $kwHit = false;
-        foreach ($keywords as $kw) {
-            if ($kw !== '' && preg_match('/\b' . preg_quote($kw, '/') . '\b/u', $hay)) {
-                $kwHit = true;
-                break;
-            }
-        }
-        if (!$isIt && !$kwHit) {
-            return false;
+        if (!\App\Support\TenderRelevance::isSoftwareWork($title . ' ' . $desc, $cpv, $keywords)) {
+            return false; // works, goods, licence resale, or only a loose word like "digital"
         }
         $endDate = $tender['tenderPeriod']['endDate'] ?? null;
         if ($endDate && strtotime($endDate) < time()) {

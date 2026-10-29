@@ -66,16 +66,21 @@ class ConversionAssistantService
                 $chk = $byKey[$k];
                 $text = $k === 'copyright' ? "the footer on {$site} still says © {$chk['value']}" : ($phr[$k] ?? null);
                 if ($text) {
-                    $facts[] = ['text' => $text, 'source' => 'website_audit', 'check' => $k, 'evidence' => $chk['evidence'], 'observed' => $audit->audited_at?->toDateString()];
+                    $facts[] = ['text' => $text, 'source' => 'website_audit', 'check' => $k, 'keys' => (array) ($chk['evidence_keys'] ?? []),
+                        // the services the audit itself mapped this finding to (works for audits stored before evidence keys)
+                        'services' => collect((array) $audit->opportunities)->filter(fn ($o) => in_array($chk['evidence'], (array) ($o['evidence'] ?? []), true))->pluck('service')->values()->all(),
+                        'evidence' => $chk['evidence'], 'observed' => $audit->audited_at?->toDateString()];
                 }
             }
-        } elseif ($audit && $audit->status === 'unreachable') {
-            $facts[] = ['text' => "{$site} didn't load when I tried it on " . $audit->audited_at?->format('j M'), 'source' => 'website_audit', 'check' => 'reachable', 'evidence' => $audit->summary, 'observed' => $audit->audited_at?->toDateString()];
+        } elseif ($audit && $audit->status === 'unreachable' && (int) $audit->opportunity_score >= 40
+            && !in_array((int) $audit->http_status, \App\Services\Audit\WebsiteAuditService::BLOCKED_STATUSES, true)) {
+            // only a CONFIRMED outage (failed twice, an hour apart, not a "refused" answer) may be claimed
+            $facts[] = ['text' => "{$site} didn't load when I tried it on " . $audit->audited_at?->format('j M'), 'source' => 'website_audit', 'check' => 'reachable', 'keys' => ['website_unreachable'], 'evidence' => $audit->summary, 'observed' => $audit->audited_at?->toDateString()];
         }
 
         foreach ($c->buyingSignals()->active()->orderByDesc('confidence')->limit(5)->get() as $s) {
             $text = match (true) {
-                ($s->metadata['evidence_key'] ?? null) === 'no_website' => "{$c->name} doesn't list a website on its Google Business profile" . ($c->google_review_count ? " despite {$c->google_review_count} Google reviews" : ''),
+                ($s->metadata['evidence_key'] ?? null) === 'no_website' => (\App\Support\CompanyName::forEmail($c->name) ?? 'Your business') . " doesn't list a website on its Google Business profile" . ($c->google_review_count ? " despite {$c->google_review_count} Google reviews" : ''),
                 $s->signal_type === 'developer_hiring' => "you're hiring for " . preg_replace('/^(Hiring Demand: |Hiring )/i', '', $s->title),
                 $s->signal_type === 'procurement_rfp' => 'you published the tender "' . preg_replace('/^Tender: /', '', $s->title) . '"',
                 in_array($s->signal_type, ['funding_announcement', 'business_expansion', 'business_launch'], true) => 'I saw the news: ' . $s->title,
@@ -112,22 +117,31 @@ class ConversionAssistantService
         $c = $lead->company;
         $facts = $this->facts($lead);
         $rec = $this->recommendOffer($lead);
-        $offer = $rec['offer'];
+        // The offer must answer the observation the e-mail opens with (seen live: a PageSpeed finding followed by an
+        // ERP pitch and a "3 fixes" call to action). Take the strongest observation that one of our offers answers.
+        $pair = $c && $facts ? $this->matchFactAndOffer($lead, $facts) : null;
+        $offer = $pair['offer'] ?? null;
 
         if (!$c || !$facts || !$offer) {
             return [
                 'ok' => false,
-                'reason' => !$facts ? 'No verified observation to personalise with. Run the website audit or add a signal — sending a generic email is not recommended.' : 'No evidence-backed offer.',
+                'reason' => !$facts ? 'No verified observation to personalise with. Run the website audit or add a signal — sending a generic email is not recommended.'
+                    : (!$rec['offer'] ? 'No evidence-backed offer.' : 'None of our offers answers the observations on record, so there is no honest first line + offer pair.'),
                 'facts' => $facts,
             ];
         }
+        $facts = array_values(array_merge([$pair['fact']], array_filter($facts, fn ($f) => $f !== $pair['fact'])));
 
-        $greeting = ($lead->contact_status === 'identified' && $lead->first_name) ? "Hi {$lead->first_name}," : "Hi {$c->name} team,";
+        $name = \App\Support\CompanyName::forEmail($c->name);
+        $site = $c->domain ?: ($c->website ? preg_replace('/^www\./', '', (string) parse_url($c->website, PHP_URL_HOST)) : null);
+        $greeting = ($lead->contact_status === 'identified' && $lead->first_name) ? "Hi {$lead->first_name}," : ($name ? "Hi {$name} team," : 'Hi there,');
         $f1 = $facts[0]['text'];
-        $subject = $this->subjectFor($facts[0], $c->name);
+        $subject = $this->subjectFor($facts[0], $name ?? $site ?? 'your business');
         $cta = $agency['booking_url']
             ? 'Worth a 15-minute call? You can pick a time here: ' . $agency['booking_url']
-            : 'Want me to send the 3 fixes I would make first? No charge.';
+            : ($facts[0]['source'] === 'website_audit'
+                ? 'Want me to send the 3 fixes I would make first? No charge.'
+                : 'Open to a short call to see if it fits? No obligation.');
         $body = "{$greeting}\n\nI noticed {$f1}.\n\nWe help businesses like yours with {$offer['pitch']}.\n\n{$cta}\n\n{$agency['sender_name']}\n{$agency['name']}";
 
         $draft = ['subject' => $subject, 'body' => $body, 'generator' => 'template'];
@@ -147,13 +161,44 @@ class ConversionAssistantService
             'draft' => $draft,
             'facts_used' => array_slice($facts, 0, 2),
             'offer' => $offer,
-            'why' => $rec['why'],
+            'why' => 'Recommended because: ' . implode(' | ', array_slice($offer['evidence'], 0, 3)) . '.',
             'warnings' => array_values(array_filter([
                 !$lead->email ? 'No email address on record — use phone or find the decision-maker first.' : null,
                 $lead->contact_status === 'generic_inbox' ? 'Going to a shared inbox; a named decision-maker usually responds better.' : null,
                 $lead->email && !\App\Support\EmailStatus::isSendable($lead->email_verification_status) ? 'Email not confirmed (' . \App\Support\EmailStatus::label($lead->email_verification_status) . ') — verify before sending.' : null,
             ])),
         ];
+    }
+
+    /**
+     * Strongest observation that one of our ranked offers answers: audit findings map to the services their
+     * evidence keys trigger, signals to the services their type triggers.
+     *
+     * @return array{fact: array, offer: array}|null
+     */
+    public function matchFactAndOffer(Lead $lead, array $facts): ?array
+    {
+        $approved = (array) \App\Models\OutreachSetting::current()->approved_services;
+        $offers = array_values(array_filter($this->offers->recommend($lead, 8), fn ($o) => !$approved || in_array($o['service'], $approved, true)));
+        $catalog = (array) config('leadpilot.services');
+        foreach ($facts as $fact) {
+            $keys = (array) ($fact['keys'] ?? []);
+            $extra = [];
+            if (($fact['source'] ?? null) === 'buying_signal' && ($s = \App\Models\BuyingSignal::find($fact['signal_id'] ?? 0))) {
+                $keys = array_filter([$s->signal_type, $s->metadata['evidence_key'] ?? null]);
+                if ($s->relevant_service && !in_array($s->signal_type, ['developer_hiring', 'mobile_hiring', 'ai_hiring'], true)) {
+                    $extra[] = $s->relevant_service; // a hiring post is answered with capacity, not whatever its text mentions
+                }
+            }
+            $services = array_merge($extra, (array) ($fact['services'] ?? []), array_keys(array_filter($catalog, fn ($def) => (bool) array_intersect($keys, (array) ($def['triggers'] ?? [])))));
+            foreach ($offers as $offer) {
+                if (in_array($offer['service'], $services, true)) {
+                    return ['fact' => $fact, 'offer' => $offer];
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function subjectFor(array $fact, string $company): string
