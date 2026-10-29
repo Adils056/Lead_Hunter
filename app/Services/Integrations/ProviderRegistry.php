@@ -61,7 +61,7 @@ class ProviderRegistry
             'hunter' => (bool) (config('leadpilot.keys.hunter') ?: $this->integrationKey('hunter')),
             'pagespeed' => (bool) config('leadpilot.sources.pagespeed.enabled'),
             'openai' => (bool) (config('leadpilot.keys.openai') ?: $this->integrationKey('openai')),
-            'gemini' => (bool) config('leadpilot.keys.gemini'),
+            'gemini' => (bool) $this->geminiKey(),
             'smtp' => config('mail.default') === 'smtp' ? (bool) (config('mail.mailers.smtp.host') && config('mail.mailers.smtp.username')) : !in_array(config('mail.default'), ['log', 'array'], true),
             'imap' => (bool) (config('leadpilot.imap.enabled') && config('leadpilot.imap.password') && config('leadpilot.imap.username')),
             default => false,
@@ -82,6 +82,12 @@ class ProviderRegistry
                 return false;
             }
         });
+    }
+
+    /** Gemini key from .env or from Settings → Integrations (SQA bug 14: every key can be set in the app). */
+    public function geminiKey(): ?string
+    {
+        return config('leadpilot.keys.gemini') ?: $this->integrationKey('gemini');
     }
 
     protected function integrationKey(string $provider): ?string

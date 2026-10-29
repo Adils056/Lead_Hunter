@@ -26,6 +26,15 @@ class IntegrationSeeder extends Seeder
                 'monthly_spend_limit_cents' => 5000,
             ],
             [
+                'provider' => 'gemini',
+                'name' => 'Google Gemini — Draft Writing (free tier)',
+                'description' => 'Optional LLM for polishing outreach drafts and the Sales Assistant. Flash-Lite free tier; only public business facts are sent.',
+                'settings' => [],
+                'is_active' => false,
+                'status' => 'pending_credentials',
+                'monthly_spend_limit_cents' => 0,
+            ],
+            [
                 'provider' => 'google_places',
                 'name' => 'Google Places API (New) — Local Business Discovery',
                 'description' => 'Official Google Maps Platform Text Search for local-business discovery. websiteUri/phone/rating trigger the Enterprise SKU (~$35 per 1,000 requests after 1,000 free/month, checked Oct 2026). Only place_id may be stored long-term; run leadpilot:places-purge daily.',

@@ -145,6 +145,7 @@ class EmailVerificationService
 
         $data = $response->json('data') ?? [];
         $status = self::mapHunter($data);
+        rescue(fn () => app(\App\Services\Integrations\ProviderHealthService::class)->success('hunter', true), report: false);
 
         app(CostLedger::class)->record('hunter', 'email_verification', self::HUNTER_COST_CENTS, true, [
             'user_id' => $userId ?? Auth::id(),
@@ -207,6 +208,10 @@ class EmailVerificationService
             $probe = $this->smtpProbe($email, $mxHosts);
         }
         $probed = in_array($probe['result'], ['deliverable', 'undeliverable', 'catch_all'], true);
+        if ($probed) {
+            // a mail server really answered: Setup & Health shows the mailbox check as verified, not "never called" (SQA bug 16)
+            rescue(fn () => app(\App\Services\Integrations\ProviderHealthService::class)->success('dns_mx', true), report: false);
+        }
 
         [$status, $score, $details] = match (true) {
             !$hasMx => [EmailStatus::INVALID, 0, "No MX or A record for {$domain}."],
