@@ -433,6 +433,70 @@ Artisan::command('leadpilot:weekly-review {--no-notify : Print only}', function 
     }
 })->purpose('The Monday review: sends, replies, own success rate per kind of lead vs benchmark, lead-pool growth, focus');
 
+Artisan::command('leadpilot:english-names {--limit=300 : Companies to try} {--seconds=600 : Stop after this many seconds} {--dry-run : Show, change nothing}', function (\App\Services\Enrichment\WebsiteFinder $finder) {
+    // Map sources list many Pakistani / Gulf businesses only in Urdu or Arabic script. Take the Latin name the business
+    // uses on its own website (schema.org name, site name, or a title part matching its domain); keep the original
+    // in local_name. No website yet: the finder tries the company's own e-mail domain and phone first. Never guessed.
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $fetcher = new \App\Services\Audit\SafeFetcher((string) config('leadpilot.sources.website_crawler.user_agent'), 10);
+    $dry = (bool) $this->option('dry-run');
+    $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNull('local_name')->orderByDesc('id')->get(['id', 'name', 'website', 'domain', 'country', 'city', 'public_email', 'public_phone'])
+        ->reject(fn ($c) => \App\Support\EnglishName::isLatin($c->name))->values();
+    $done = $renamed = $sites = 0;
+    foreach ($companies as $c) {
+        if (microtime(true) > $deadline || $done >= (int) $this->option('limit')) {
+            break;
+        }
+        if (\Illuminate\Support\Facades\Cache::has("english_name:tried:{$c->id}")) {
+            continue;
+        }
+        $done++;
+        $website = $c->website;
+        if (!$website) {
+            $r = $finder->find($c); // e-mail domain / phone proof only: a non-Latin name gives no name guesses
+            if ($r['outcome'] === 'found') {
+                $website = $r['website'];
+                $sites++;
+                if (!$dry) {
+                    $c->update(['website' => $website, 'domain' => $c->domain ?: \App\Models\Company::normalizeDomain($website)]);
+                    \App\Models\DataProvenance::record($c, ['website' => $website], 'website_finder', $website, 'crawl', 80);
+                }
+            }
+        }
+        $english = null;
+        if ($website) {
+            try {
+                [$res, $final] = $fetcher->fetch(rtrim($website, '/') . '/');
+                $english = $res->successful() ? \App\Support\EnglishName::fromHtml((string) $res->body(), parse_url($final, PHP_URL_HOST)) : null;
+            } catch (\Throwable) {
+                $english = null;
+            }
+        }
+        if (!$dry) {
+            \Illuminate\Support\Facades\Cache::put("english_name:tried:{$c->id}", $english ? 'renamed' : 'none', now()->addDays(30));
+        }
+        if (!$english) {
+            continue;
+        }
+        $renamed++;
+        $this->line("  {$c->id} {$c->name} → {$english}" . ($website !== $c->website ? "  (site found: {$website})" : ''));
+        if ($dry) {
+            continue;
+        }
+        $old = $c->name;
+        $c->update(['name' => $english, 'local_name' => $old]);
+        \App\Models\DataProvenance::record($c, ['name' => $english], 'company_website', $website, 'crawl', 85);
+        // the honest labels of unnamed contacts carry the company name ("<name> — general inbox")
+        foreach ($c->leads()->where(fn ($q) => $q->where('full_name', 'like', '%— general inbox')->orWhere('full_name', 'like', '%— contact unknown'))->get() as $lead) {
+            if (str_starts_with((string) $lead->full_name, $old)) {
+                $lead->update(['full_name' => $english . mb_substr($lead->full_name, mb_strlen($old))]);
+            }
+        }
+    }
+    $left = $companies->count() - $renamed;
+    $this->info(($dry ? '[dry run] ' : '') . "Tried {$done} of {$companies->count()} non-Latin names: {$renamed} took the English name from their own website ({$sites} websites found on the way); {$left} keep the local name.");
+})->purpose('Give Urdu / Arabic-script company names the English name the business uses on its own website (original kept)');
+
 Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
     // Decision-makers named on a company's own site but with no published address: try the common patterns on the
     // company's mail server and keep one only when that mailbox is accepted and a random one is not (no mail is sent).
@@ -776,6 +840,7 @@ Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to downloa
 })->purpose('Download Overture places for the searched cities ahead of time (once per monthly release)');
 
 Schedule::command('leadpilot:find-websites --limit=80 --seconds=900')->dailyAt('02:30')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
+Schedule::command('leadpilot:english-names --limit=100 --seconds=420')->dailyAt('02:55')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
 // second pass for decision-makers that daytime audits (autopilot, website finder) put on the record

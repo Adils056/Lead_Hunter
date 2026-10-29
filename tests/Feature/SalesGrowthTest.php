@@ -145,4 +145,30 @@ class SalesGrowthTest extends TestCase
         $this->artisan('leadpilot:weekly-review')->assertSuccessful();
         $this->assertSame(1, $admin->fresh()->notifications()->count(), 'one review per week');
     }
+
+    public function test_urdu_and_arabic_names_take_the_english_name_the_business_uses_on_its_own_site(): void
+    {
+        $this->assertSame('Royaute Luxury Hotel', \App\Support\EnglishName::fromHtml('<title>Royaute Luxury Hotel | Best stay in Lahore</title>', 'www.royauteluxury.com'));
+        $this->assertNull(\App\Support\EnglishName::fromHtml('<title>Best hotel in Lahore | Book now</title>', 'royauteluxury.com'), 'a slogan is not the name');
+        $this->assertSame('Al Noor Bakers', \App\Support\EnglishName::fromHtml('<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Home"},{"@type":"Bakery","name":"Al Noor Bakers"}]}</script><title>Home</title>', 'alnoor.pk'));
+        $this->assertSame('Zam Zam Sweets', \App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="Zam Zam Sweets"><title>صفحہ اول</title>', 'zz.pk'));
+        $this->assertNull(\App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="زم زم سویٹس"><title>زم زم</title>', 'zz.pk'), 'still in Urdu: nothing');
+        $this->assertNull(\App\Support\EnglishName::clean('royauteluxury.com'));
+
+        Http::fake(['https://zyqordental.co.uk/*' => Http::response('<html><head><title>Zyqor Dental Care | Leeds</title></head><body>' . str_repeat('Smile. ', 80) . '<a href="/c">c</a></body></html>', 200), '*' => Http::response('', 404)]);
+        $c = Company::create(['name' => 'زیقور ڈینٹل', 'website' => 'https://zyqordental.co.uk', 'country' => 'Pakistan']);
+        $inbox = Lead::create(['company_id' => $c->id, 'full_name' => 'زیقور ڈینٹل — general inbox', 'email' => 'info@zyqordental.co.uk', 'contact_status' => 'generic_inbox']);
+        $keep = Company::create(['name' => 'روياٹ لگژری ہوٹل', 'country' => 'Pakistan']);
+
+        $this->artisan('leadpilot:english-names --dry-run')->expectsOutputToContain('→ Zyqor Dental Care')->assertSuccessful();
+        $this->assertSame('زیقور ڈینٹل', $c->fresh()->name, 'dry run changes nothing');
+
+        $this->artisan('leadpilot:english-names')->expectsOutputToContain('1 took the English name')->assertSuccessful();
+        $this->assertSame(['Zyqor Dental Care', 'زیقور ڈینٹل'], [$c->fresh()->name, $c->fresh()->local_name]);
+        $this->assertSame('Zyqor Dental Care — general inbox', $inbox->fresh()->full_name);
+        $this->assertSame('روياٹ لگژری ہوٹل', $keep->fresh()->name, 'no website, no proof: the local name stays');
+
+        $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
+        $this->actingAs($admin)->get(route('companies.index', ['search' => 'زیقور']))->assertOk()->assertSee('Zyqor Dental Care');
+    }
 }
