@@ -148,9 +148,12 @@ class WebsiteAuditService
 
         // ---- 4. Contacts (homepage + contact/about pages permitted by robots.txt)
         $pages = [$finalUrl => $html];
-        foreach ((array) config('leadpilot.sources.website_crawler.contact_paths', []) as $path) {
-            $u = $this->origin($finalUrl) . $path;
-            if (count($pages) >= (int) config('leadpilot.sources.website_crawler.max_pages', 4) || !$this->robotsAllows($u)) {
+        // Pages the homepage itself links to as team / people / about / contact come first (a law firm's people live at
+        // /attorneys, a clinic's at /our-doctors); the fixed paths are the fallback.
+        $candidates = array_unique(array_merge($this->peoplePageLinks($xp, $finalUrl),
+            array_map(fn ($path) => $this->origin($finalUrl) . $path, (array) config('leadpilot.sources.website_crawler.contact_paths', []))));
+        foreach ($candidates as $u) {
+            if (count($pages) >= (int) config('leadpilot.sources.website_crawler.max_pages', 5) || isset($pages[$u]) || !$this->robotsAllows($u)) {
                 continue;
             }
             try {
@@ -161,6 +164,7 @@ class WebsiteAuditService
             } catch (\Throwable) {
             }
         }
+        $contacts['pages'] = array_keys($pages); // which pages were read, for "why no names?" questions
         $domain = Company::normalizeDomain($finalUrl);
         $board = null;
         foreach ($pages as $pageUrl => $body) {
@@ -454,6 +458,41 @@ class WebsiteAuditService
         return array_values($t);
     }
 
+    /** Same-site links whose text or path says team / people / about / contact, best first (at most 6). */
+    protected function peoplePageLinks(DOMXPath $xp, string $base): array
+    {
+        $tiers = [
+            '/\b(team|our[ -]?people|people|staff|attorneys?|lawyers?|solicitors?|doctors?|dentists?|physicians?|leadership|management|directors|partners|founders?|meet)\b/i',
+            '/\b(about|who[ -]?we[ -]?are|our[ -]?story|company)\b/i',
+            '/\b(contact)\b/i',
+        ];
+        $found = [];
+        foreach ($xp->query('//a[@href]') as $a) {
+            $href = trim($a->getAttribute('href'));
+            if ($href === '' || preg_match('#^(\#|mailto:|tel:|javascript:|whatsapp:)#i', $href)) {
+                continue;
+            }
+            $abs = $this->absolutize($href, $base);
+            if (!$abs || !SafeFetcher::sameOrigin($abs, $base) || preg_match('/\.(pdf|jpe?g|png|gif|webp|zip|docx?|xlsx?)(\?|$)/i', $abs)) {
+                continue;
+            }
+            $abs = strtok($abs, '#');
+            if (rtrim($abs, '/') === rtrim($base, '/')) {
+                continue;
+            }
+            $haystack = trim($a->textContent) . ' ' . str_replace(['-', '_', '/'], ' ', (string) parse_url($abs, PHP_URL_PATH));
+            foreach ($tiers as $rank => $re) {
+                if (preg_match($re, $haystack)) {
+                    $found[$abs] = min($found[$abs] ?? 9, $rank);
+                    break;
+                }
+            }
+        }
+        asort($found);
+
+        return array_slice(array_keys($found), 0, 6);
+    }
+
     protected function brokenLinkCheck(DOMXPath $xp, string $base): array
     {
         $origin = $this->origin($base);
@@ -583,6 +622,7 @@ class WebsiteAuditService
             'phones' => array_values($contacts['phones'] ?? []),
             'socials' => $contacts['socials'] ?? [],
             'people' => array_values($contacts['people'] ?? []),
+            'pages' => array_values($contacts['pages'] ?? []),
         ];
         $score = $this->opportunityScore($checks);
         $opps = $this->mapOpportunities($checks);

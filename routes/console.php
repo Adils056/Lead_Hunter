@@ -290,6 +290,44 @@ Artisan::command('leadpilot:audit {company : Company id}', function (\App\Servic
     $this->line($audit->summary);
 })->purpose('Run an evidence-based website audit for one company');
 
+Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Audit\WebsiteAuditService $audits, \App\Services\LeadScoringService $scoring) {
+    // Re-audit companies that only have a shared inbox (or nothing) so their team / about pages are read for named
+    // decision-makers. Companies already read with the people step (their audit lists "pages") are skipped.
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('website')
+        ->whereHas('leads', fn ($q) => $q->whereIn('contact_status', ['generic_inbox', 'needs_enrichment']))
+        ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
+        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found', 'like', '%"pages":%'))
+        ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
+        ->limit((int) $this->option('limit'))->get();
+
+    $done = $withPeople = $named = 0;
+    foreach ($companies as $c) {
+        if (microtime(true) > $deadline) {
+            break;
+        }
+        $before = $c->leads()->where('contact_status', 'identified')->count();
+        try {
+            $audit = $audits->audit($c);
+        } catch (\Throwable $e) {
+            $this->line("  {$c->id} {$c->name}: " . mb_substr($e->getMessage(), 0, 80));
+            continue;
+        }
+        $done++;
+        $people = $audit->contacts_found['people'] ?? [];
+        $added = $c->leads()->where('contact_status', 'identified')->count() - $before;
+        $withPeople += $people ? 1 : 0;
+        $named += $added;
+        foreach ($c->leads()->get() as $lead) {
+            $scoring->evaluateLead($lead);
+        }
+        if ($people) {
+            $this->line("  {$c->id} {$c->name}: " . implode('; ', array_map(fn ($p) => $p['name'] . ' (' . $p['role'] . ')' . ($p['email'] ? ' ' . $p['email'] : ''), $people)) . ($added ? "  → {$added} named contact(s)" : ''));
+        }
+    }
+    $this->info("Re-audited {$done} of {$companies->count()} companies: {$withPeople} list decision-makers, {$named} new named contact(s) with their own published email.");
+})->purpose('Read team / about pages of shared-inbox companies for named decision-makers (never guesses an email)');
+
 Artisan::command('leadpilot:places-purge {--days= : Override retention days}', function () {
     // Google Maps Platform terms: only place_id may be stored indefinitely. Remove Places-sourced
     // field values older than the retention window unless a different source has since confirmed them.
@@ -587,4 +625,5 @@ Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to downloa
     return 0;
 })->purpose('Download Overture places for the searched cities ahead of time (once per monthly release)');
 
+Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();
