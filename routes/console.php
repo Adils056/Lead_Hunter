@@ -497,6 +497,18 @@ Artisan::command('leadpilot:english-names {--limit=300 : Companies to try} {--se
     $this->info(($dry ? '[dry run] ' : '') . "Tried {$done} of {$companies->count()} non-Latin names: {$renamed} took the English name from their own website ({$sites} websites found on the way); {$left} keep the local name.");
 })->purpose('Give Urdu / Arabic-script company names the English name the business uses on its own website (original kept)');
 
+Artisan::command('leadpilot:radar {--days=7 : Look back this many days}', function (\App\Services\Radar\RadarService $radar) {
+    // Buyer's Radar: people asking for software work on Hacker News (official free search API), classified hot / warm.
+    try {
+        $r = $radar->scanHackerNews((int) $this->option('days'));
+        $this->info("Hacker News: {$r['seen']} posts read, {$r['added']} new buyer post(s) on the radar.");
+    } catch (\Throwable $e) {
+        $this->warn('Hacker News scan failed: ' . mb_substr($e->getMessage(), 0, 160));
+    }
+    $closed = \App\Models\RadarItem::where('status', 'new')->whereHas('signal', fn ($q) => $q->whereNotNull('expiry_date')->where('expiry_date', '<', now()->toDateString()))->update(['status' => 'dismissed']);
+    $this->line("Closed tenders taken off the radar: {$closed}");
+})->purpose("Buyer's Radar: scan public forums for buying intent and retire closed items");
+
 Artisan::command('leadpilot:find-emails {--limit=40 : Companies to try} {--seconds=240 : Stop after this many seconds}', function (\App\Services\Enrichment\EmailFinder $finder, \App\Services\EmailVerificationService $verifier, \App\Services\LeadScoringService $scoring) {
     // Decision-makers named on a company's own site but with no published address: try the common patterns on the
     // company's mail server and keep one only when that mailbox is accepted and a random one is not (no mail is sent).
@@ -845,5 +857,6 @@ Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('0
 Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
 // second pass for decision-makers that daytime audits (autopilot, website finder) put on the record
 Schedule::command('leadpilot:find-emails --limit=40 --seconds=420')->dailyAt('14:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
+Schedule::command('leadpilot:radar --days=3')->cron('17 */2 * * *')->withoutOverlapping(10)->runInBackground();
 Schedule::command('leadpilot:weekly-review')->weeklyOn(1, '09:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 Schedule::command('leadpilot:overture-warm')->dailyAt('04:20')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(180)->runInBackground();

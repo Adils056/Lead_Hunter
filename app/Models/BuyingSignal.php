@@ -27,6 +27,22 @@ class BuyingSignal extends Model
         'metadata',
     ];
 
+    protected static function booted(): void
+    {
+        // keep the Buyer's Radar in step with every signal (the radar table arrives with a later migration)
+        static::saved(function (BuyingSignal $s) {
+            static $ready = null;
+            $ready ??= \Illuminate\Support\Facades\Schema::hasTable('radar_items');
+            if ($ready) {
+                try {
+                    app(\App\Services\Radar\RadarService::class)->mirror($s);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Radar mirror failed for signal {$s->id}: " . $e->getMessage());
+                }
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [

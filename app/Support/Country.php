@@ -48,6 +48,28 @@ class Country
         return self::fromCity($address['locality'] ?? null) ?? $fallback;
     }
 
+    /** The country a free-text post names ("US-based startup", "we are in Dubai"); null when it names none. */
+    public static function fromText(string $text): ?string
+    {
+        if (preg_match('/\b(USA|US|UK|UAE|KSA)\b/', $text, $m)) { // upper case only: "us" is a pronoun
+            return self::ALIASES[strtolower($m[1])];
+        }
+        $lower = strtolower($text);
+        foreach (array_unique(array_values(self::ALIASES)) as $country) {
+            if (preg_match('/\b' . preg_quote(strtolower($country), '/') . '\b/', $lower)) {
+                return $country;
+            }
+        }
+        foreach (self::CITIES + ['london' => 'United Kingdom', 'manchester' => 'United Kingdom', 'new york' => 'United States', 'san francisco' => 'United States',
+            'toronto' => 'Canada', 'sydney' => 'Australia', 'melbourne' => 'Australia'] as $city => $country) {
+            if (preg_match('/\b' . preg_quote($city, '/') . '\b/', $lower)) {
+                return $country;
+            }
+        }
+
+        return null;
+    }
+
     public static function fromCity(?string $city): ?string
     {
         return self::CITIES[strtolower(trim((string) $city))] ?? null;
