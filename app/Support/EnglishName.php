@@ -7,12 +7,14 @@ use Illuminate\Support\Str;
 /**
  * The Latin-script name a business uses for itself on its own website, for companies the map sources list only in
  * Urdu / Arabic script. Taken, best first, from its schema.org name, og:site_name / application-name, then a
- * <title> part — a title part only when it matches the site's own domain ("Royaute Luxury Hotel" on
- * royauteluxury.com), because a title is often a slogan. Nothing is transliterated or guessed: no match, no name.
+ * <title> part — each only when it matches the site's own domain ("Royaute Luxury Hotel" on royauteluxury.com),
+ * because site names and titles are often slogans. Nothing is transliterated or guessed: no match, no name.
  */
 class EnglishName
 {
     protected const GENERIC = '/^(home|homepage|home page|welcome|index|main|official( web)?site|website|untitled|coming soon|under construction|just another wordpress site|wordpress|default|page not found|404|login|contact us|about us)$/i';
+
+    protected const COMMON_WORDS = '/^(health|healthcare|clinic|clinics|dental|medical|hospital|hotel|hotels|school|schools|care|services?|travel|tours|international|global|national|academy|institute|trading|real|estate|propert(y|ies)|solutions?|technolog(y|ies)|tech|systems?|consult(ing|ants?)|restaurants?|cafe|store|shop|online|official|world|group|home|homes|life|smart|best|first|city|plus|pharmacy|beauty|salon|fitness|motors?|auto|foods?|sweets|bakers?)$/';
 
     public static function isLatin(?string $name): bool
     {
@@ -23,28 +25,51 @@ class EnglishName
     {
         $label = strtolower(preg_replace('/[^a-z0-9]/i', '', explode('.', preg_replace('/^www\./i', '', (string) $host))[0] ?? ''));
 
-        foreach (array_merge(self::jsonLdNames($html), self::metaNames($html)) as $n) {
-            if ($clean = self::clean($n)) {
-                return $clean;
-            }
+        if (strlen($label) < 3) {
+            return null;
         }
-        if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $m) && strlen($label) >= 4) {
-            foreach (preg_split('/\s+(?:\||-|–|—|::|:|·|»)\s+/u', html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5)) as $part) {
-                $clean = self::clean($part);
-                $compact = strtolower(preg_replace('/[^a-z0-9]/i', '', Str::ascii((string) $clean)));
-                if ($clean && strlen($compact) >= 4 && (str_contains($compact, $label) || str_contains($label, $compact))) {
-                    return $clean;
-                }
+        $names = array_merge(self::jsonLdNames($html), self::metaNames($html));
+        if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $m)) {
+            $names = array_merge($names, preg_split('/\s+(?:\||-|–|—|::|:|·|»)\s+/u', html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5)));
+        }
+        foreach ($names as $n) {
+            // every source must agree with the site's own domain: a site name or title can be a slogan ("Success Spirit")
+            if (($clean = self::clean($n)) && self::matchesDomain($clean, $label)) {
+                return $clean;
             }
         }
 
         return null;
     }
 
+    /** "Royaute Luxury Hotel" ~ royauteluxury, "Czech Institute of Physiotherapy" ~ czechcenter, "National Blood & Cancer Center" ~ nbcc. */
+    public static function matchesDomain(string $name, string $label): bool
+    {
+        $compact = strtolower(preg_replace('/[^a-z0-9]/i', '', Str::ascii($name)));
+        if (strlen($compact) >= 4 && (str_contains($compact, $label) || str_contains($label, $compact))) {
+            return true;
+        }
+        $words = array_values(array_filter(preg_split('/[^a-z0-9]+/', strtolower(Str::ascii($name)), -1, PREG_SPLIT_NO_EMPTY),
+            fn ($w) => !in_array($w, ['the', 'and', 'of', 'for', 'al', 'co', 'llc', 'ltd', 'est', 'center', 'centre', 'company', 'group'], true)));
+        foreach ($words as $w) {
+            // a distinctive word only: "health" in smilehealth.com says nothing about "Global Health Partners"
+            if (strlen($w) >= 4 && !preg_match(self::COMMON_WORDS, $w) && str_contains($label, $w)) {
+                return true;
+            }
+        }
+        $initials = implode('', array_map(fn ($w) => $w[0], array_filter(preg_split('/[^a-z0-9]+/', strtolower(Str::ascii($name)), -1, PREG_SPLIT_NO_EMPTY),
+            fn ($w) => !in_array($w, ['the', 'and', 'of', 'for'], true))));
+
+        return strlen($initials) >= 3 && str_starts_with($label, $initials);
+    }
+
     /** A usable business name, or null: mostly Latin letters, 2-60 chars, at most 8 words, not "Home" / a domain. */
     public static function clean(?string $name): ?string
     {
         $n = html_entity_decode(strip_tags((string) $name), ENT_QUOTES | ENT_HTML5);
+        if (preg_match('#[a-z][a-z0-9+.-]*://|^www\.#i', trim($n))) {
+            return null; // a link where the name should be ("https:// /")
+        }
         $n = preg_replace('/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i', ' ', $n); // a domain is not a name
         $n = trim(preg_replace('/\s+/u', ' ', $n), " \t\n\r\0\x0B|-–—:·»,");
         if ($n === '' || mb_strlen($n) < 2 || mb_strlen($n) > 60 || count(explode(' ', $n)) > 8 || preg_match(self::GENERIC, $n)) {
@@ -52,7 +77,7 @@ class EnglishName
         }
         preg_match_all('/\p{L}/u', $n, $letters);
         preg_match_all('/\p{Latin}/u', $n, $latin);
-        if (!$letters[0] || count($latin[0]) / count($letters[0]) < 0.8) {
+        if (count($letters[0]) < 2 || count($latin[0]) / count($letters[0]) < 0.8) {
             return null; // still mostly another script
         }
 
