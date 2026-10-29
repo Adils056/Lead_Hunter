@@ -3,7 +3,8 @@
 @section('content')
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div><h3 class="fw-bold mb-1">Performance &amp; learning</h3><p class="text-muted small mb-0">Real outcomes only, last {{ $r['days'] }} days. Autopilot uses these numbers to decide where to search next.</p></div>
-    <form><select name="days" class="form-select form-select-sm" onchange="this.form.submit()">@foreach([30,90,180,365] as $d)<option value="{{ $d }}" @selected($r['days']==$d)>{{ $d }} days</option>@endforeach</select></form>
+    <div class="d-flex gap-2"><a href="{{ route('autopilot.weekly') }}" class="btn btn-sm btn-primary"><i class="bi bi-calendar-week me-1"></i>Weekly review</a>
+    <form><select name="days" class="form-select form-select-sm" onchange="this.form.submit()">@foreach([30,90,180,365] as $d)<option value="{{ $d }}" @selected($r['days']==$d)>{{ $d }} days</option>@endforeach</select></form></div>
 </div>
 <div class="row g-3 mb-4">
     @foreach($r['totals'] as $k => $v)<div class="col-6 col-md-2"><div class="card-lp p-3"><div class="small text-muted">{{ ucwords(str_replace('_',' ',$k)) }}</div><div class="fs-4 fw-bold">{{ $v }}</div></div></div>@endforeach

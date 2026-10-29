@@ -520,7 +520,7 @@ class WebsiteAuditService
     }
 
     /** No readable text and no links: nothing a visitor (or an audit) can judge. */
-    protected function isEmptyShell(string $html): bool
+    public function isEmptyShell(string $html): bool
     {
         if (strlen($html) > 4096) {
             return false;

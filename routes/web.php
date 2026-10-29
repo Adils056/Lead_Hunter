@@ -133,6 +133,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/autopilot/setup', [\App\Http\Controllers\AutopilotController::class, 'setup'])->name('autopilot.setup');
     Route::post('/autopilot/setup/defaults', [\App\Http\Controllers\AutopilotController::class, 'applyDefaults'])->name('autopilot.setup.defaults');
     Route::get('/autopilot/performance', [\App\Http\Controllers\AutopilotController::class, 'performance'])->name('autopilot.performance');
+    Route::get('/autopilot/weekly', [\App\Http\Controllers\AutopilotController::class, 'weekly'])->name('autopilot.weekly');
 
     Route::get('/approvals', [\App\Http\Controllers\ApprovalController::class, 'index'])->name('approvals.index');
     Route::get('/approvals/{approval}', [\App\Http\Controllers\ApprovalController::class, 'show'])->name('approvals.show');
