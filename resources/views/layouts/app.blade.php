@@ -431,6 +431,10 @@
                 <i class="bi bi-sliders"></i>
                 <span>Integrations & API</span>
             </a>
+            <a href="{{ route('settings.ai-providers') }}" class="nav-link-custom {{ request()->routeIs('settings.ai-providers*') ? 'active' : '' }}">
+                <i class="bi bi-cpu"></i>
+                <span>AI Models</span>
+            </a>
             <a href="{{ route('autopilot.policy') }}" class="nav-link-custom {{ request()->routeIs('autopilot.policy') ? 'active' : '' }}">
                 <i class="bi bi-shield-check"></i>
                 <span>Autonomy &amp; Budgets</span>
