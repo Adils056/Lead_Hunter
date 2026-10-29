@@ -150,10 +150,16 @@ class SalesGrowthTest extends TestCase
     {
         $this->assertSame('Royaute Luxury Hotel', \App\Support\EnglishName::fromHtml('<title>Royaute Luxury Hotel | Best stay in Lahore</title>', 'www.royauteluxury.com'));
         $this->assertNull(\App\Support\EnglishName::fromHtml('<title>Best hotel in Lahore | Book now</title>', 'royauteluxury.com'), 'a slogan is not the name');
-        $this->assertSame('Al Noor Bakers', \App\Support\EnglishName::fromHtml('<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Home"},{"@type":"Bakery","name":"Al Noor Bakers"}]}</script><title>Home</title>', 'alnoor.pk'));
-        $this->assertSame('Zam Zam Sweets', \App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="Zam Zam Sweets"><title>صفحہ اول</title>', 'zz.pk'));
+        $this->assertSame('Al Noor Bakers', \App\Support\EnglishName::fromHtml('<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Home"},{"@type":"Bakery","name":"Al Noor Bakers"}]}</script><title>Home</title>', 'alnoorbakers.pk'));
+        $this->assertSame('Zam Zam Sweets', \App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="Zam Zam Sweets"><title>صفحہ اول</title>', 'zamzamsweets.pk'));
         $this->assertNull(\App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="زم زم سویٹس"><title>زم زم</title>', 'zz.pk'), 'still in Urdu: nothing');
         $this->assertNull(\App\Support\EnglishName::clean('royauteluxury.com'));
+        // first live dry run (29 Oct): a broken link and a school slogan came back as names
+        $this->assertNull(\App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="https:// /"><title>ذا كلينكس</title>', 'theclinics.sa'));
+        $this->assertNull(\App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="Success Spirit"><title>Success Spirit</title>', 'samaschools.edu.sa'));
+        $this->assertSame('National Blood & Cancer Center', \App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="National Blood &amp; Cancer Center">', 'nbcc.ae'));
+        $this->assertNull(\App\Support\EnglishName::fromHtml('<meta property="og:site_name" content="Global Health Partners">', 'smilehealth.com'), 'a common word in the domain proves nothing');
+        $this->assertSame('Czech Institute of Physiotherapy', \App\Support\EnglishName::fromHtml('<title>Czech Institute of Physiotherapy | Riyadh</title>', 'czechcenter.sa'));
 
         Http::fake(['https://zyqordental.co.uk/*' => Http::response('<html><head><title>Zyqor Dental Care | Leeds</title></head><body>' . str_repeat('Smile. ', 80) . '<a href="/c">c</a></body></html>', 200), '*' => Http::response('', 404)]);
         $c = Company::create(['name' => 'زیقور ڈینٹل', 'website' => 'https://zyqordental.co.uk', 'country' => 'Pakistan']);
