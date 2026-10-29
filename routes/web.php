@@ -118,6 +118,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/hunting/{icp}/hunt', [\App\Http\Controllers\IcpProfileController::class, 'hunt'])->name('hunting.hunt');
 
     Route::post('/companies/{company}/audit', [\App\Http\Controllers\WebsiteAuditController::class, 'store'])->name('companies.audit')->middleware('throttle:20,1');
+    Route::post('/companies/{company}/report', [\App\Http\Controllers\WebsiteReportController::class, 'store'])->name('companies.report.build')->middleware('throttle:6,1');
+    Route::get('/companies/{company}/report', [\App\Http\Controllers\WebsiteReportController::class, 'show'])->name('companies.report');
+    Route::get('/companies/{company}/report.pdf', [\App\Http\Controllers\WebsiteReportController::class, 'pdf'])->name('companies.report.pdf');
     Route::get('/audits/{audit}', [\App\Http\Controllers\WebsiteAuditController::class, 'show'])->name('audits.show');
 
     Route::get('/leads/{lead}/assistant', [\App\Http\Controllers\SalesAssistantController::class, 'show'])->name('assistant.show');

@@ -105,6 +105,16 @@ class Company extends Model
         return $this->hasMany(Lead::class);
     }
 
+    public function websiteReports(): HasMany
+    {
+        return $this->hasMany(WebsiteReport::class);
+    }
+
+    public function latestWebsiteReport(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(WebsiteReport::class)->latestOfMany();
+    }
+
     public function buyingSignals(): HasMany
     {
         return $this->hasMany(BuyingSignal::class);

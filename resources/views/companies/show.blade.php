@@ -29,7 +29,7 @@
             </div>
         </div>
 
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             @if($company->website || $company->domain)
             <form action="{{ route('companies.audit', $company) }}" method="POST">
                 @csrf
@@ -42,6 +42,17 @@
             <a href="{{ route('audits.show', $company->latestWebsiteAudit) }}" class="btn btn-sm btn-light border d-flex align-items-center gap-1">
                 <i class="bi bi-file-earmark-text"></i> Audit {{ $company->website_opportunity_score }}/100
             </a>
+            @endif
+            @endif
+            @if($company->website)
+            <form action="{{ route('companies.report.build', $company) }}" method="POST" onsubmit="this.querySelector('button').disabled=true; this.querySelector('span').textContent='Building report (up to a minute)…';">
+                @csrf
+                <button type="submit" class="btn btn-sm btn-outline-dark d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-bar-chart-steps"></i><span>{{ $company->latestWebsiteReport ? 'Rebuild' : 'Build' }} competitor report</span>
+                </button>
+            </form>
+            @if($company->latestWebsiteReport)
+            <a href="{{ route('companies.report', $company) }}" class="btn btn-sm btn-light border d-flex align-items-center gap-1"><i class="bi bi-file-earmark-bar-graph"></i> Report</a>
             @endif
             @endif
             <form action="{{ route('companies.research', $company) }}" method="POST">
