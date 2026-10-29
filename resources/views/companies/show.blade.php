@@ -14,7 +14,7 @@
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
         <div>
             <div class="d-flex align-items-center gap-2">
-                <h3 class="fw-bold mb-0">{{ $company->name }}@if($company->local_name)<span class="fs-6 fw-normal text-muted ms-2" dir="auto">{{ $company->local_name }}</span>@endif</h3>
+                <h3 class="fw-bold mb-0">{{ $company->name }}@if($company->isNewBusiness())<span class="badge bg-success-subtle text-success border ms-2 fs-6 align-middle" title="{{ $company->incorporated_on ? 'Incorporated ' . $company->incorporated_on->format('j M Y') : '' }} {{ $company->domain_registered_on ? 'Domain registered ' . $company->domain_registered_on->format('j M Y') : '' }}">New business</span>@endif @if($company->local_name)<span class="fs-6 fw-normal text-muted ms-2" dir="auto">{{ $company->local_name }}</span>@endif</h3>
                 <span class="badge {{ $company->status === 'customer' ? 'bg-success' : 'bg-primary' }}">{{ ucfirst($company->status) }}</span>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3 text-muted small mt-1">

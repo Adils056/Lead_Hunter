@@ -29,6 +29,7 @@ class ProviderRegistry
         'himalayas' => ['Himalayas jobs', 'hiring_signals', false, 0, 'https://himalayas.app/api', 'No key. Remote jobs; the job link is kept on every signal.'],
         'arbeitnow' => ['Arbeitnow jobs', 'hiring_signals', false, 0, 'https://www.arbeitnow.com/blog/job-board-api', 'No key. Europe (mostly Germany); link back kept.'],
         'public_job_demand' => ['Remotive', 'hiring_signals', false, 0, 'https://github.com/remotive-com/remote-jobs-api', 'Disabled: terms forbid lead collection.'],
+        'companies_house' => ['Companies House (new UK companies)', 'b2b_discovery', false, 0, 'https://developer.company-information.service.gov.uk/', 'Free API key (register, create an application, REST key). New companies in the last 14 days, by SIC code.'],
         'wikidata_orgs' => ['Wikidata organisations', 'b2b_discovery', false, 0, 'https://query.wikidata.org/', 'No key. CC0 data: companies by industry + country with official website.'],
         'apollo_orgs' => ['Apollo.io Organizations', 'b2b_discovery', true, 1, 'https://docs.apollo.io/', 'Add API key in Integrations.'],
         'dns_mx' => ['DNS/MX + SMTP mailbox check (built-in)', 'email_verification', false, 0, null, 'Built in, free. The mailbox probe needs outbound port 25 (LEADPILOT_SMTP_PROBE).'],
@@ -62,6 +63,7 @@ class ProviderRegistry
             'public_job_demand' => (bool) config('leadpilot.sources.remotive.enabled'),
             'google_places' => (bool) (config('leadpilot.sources.google_places.api_key') ?: $this->integrationKey('google_places')),
             'apollo_orgs' => (bool) $this->integrationKey('apollo'),
+            'companies_house' => (bool) (config('leadpilot.keys.companies_house') ?: $this->integrationKey('companies_house')),
             'hunter' => (bool) (config('leadpilot.keys.hunter') ?: $this->integrationKey('hunter')),
             'pagespeed' => (bool) config('leadpilot.sources.pagespeed.enabled'),
             'openai' => (bool) (config('leadpilot.keys.openai') ?: $this->integrationKey('openai')),
@@ -92,6 +94,11 @@ class ProviderRegistry
     public function geminiKey(): ?string
     {
         return config('leadpilot.keys.gemini') ?: $this->integrationKey('gemini');
+    }
+
+    public function integrationKeyFor(string $provider): ?string
+    {
+        return $this->integrationKey($provider);
     }
 
     protected function integrationKey(string $provider): ?string

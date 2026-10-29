@@ -30,6 +30,8 @@ class Company extends Model
     protected $fillable = [
         'name',
         'local_name',
+        'incorporated_on',
+        'domain_registered_on',
         'website',
         'domain',
         'industry',
@@ -72,7 +74,18 @@ class Company extends Model
             'website_audited_at' => 'datetime',
             'ats_checked_at' => 'datetime',
             'google_rating' => 'float',
+            'incorporated_on' => 'date',
+            'domain_registered_on' => 'date',
+            'domain_checked_at' => 'datetime',
         ];
+    }
+
+    /** Started within the last year: registered as a company, or its own domain is that new. */
+    public function isNewBusiness(): bool
+    {
+        $since = now()->subYear();
+
+        return ($this->incorporated_on && $this->incorporated_on->gt($since)) || ($this->domain_registered_on && $this->domain_registered_on->gt($since));
     }
 
     public static function extractDomain(?string $url): ?string

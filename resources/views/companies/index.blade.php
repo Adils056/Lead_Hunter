@@ -38,7 +38,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <select name="industry" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Industries</option>
                 @foreach($industries as $ind)
@@ -46,9 +46,15 @@
                 @endforeach
             </select>
         </div>
+        <div class="col-md-1">
+            <div class="form-check small mb-0" title="Registered as a company, or own domain registered, in the last 12 months">
+                <input class="form-check-input" type="checkbox" name="fresh" value="1" id="fresh" onchange="this.form.submit()" @checked(request('fresh'))>
+                <label class="form-check-label" for="fresh">New businesses</label>
+            </div>
+        </div>
         <div class="col-md-2 d-flex gap-2">
             <button type="submit" class="btn btn-sm btn-light border w-100"><i class="bi bi-funnel me-1"></i>Filter</button>
-            @if($search || $country || $industry)
+            @if($search || $country || $industry || request('fresh'))
                 <a href="{{ route('companies.index') }}" class="btn btn-sm btn-light border text-danger"><i class="bi bi-x-lg"></i></a>
             @endif
         </div>

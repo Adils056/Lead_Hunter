@@ -13,7 +13,7 @@ class IntentClassifier
     public const BASE = [
         'vendor_request' => 75, 'project_requirements' => 75, 'procurement_rfp' => 70, 'erp_crm_request' => 70, 'seeking_freelancer' => 70,
         'developer_hiring' => 55, 'mobile_hiring' => 55, 'ai_hiring' => 55, 'tech_stack_change' => 45, 'funding_announcement' => 40,
-        'business_expansion' => 40, 'business_launch' => 40, 'forum_post' => 35, 'website_issues' => 25,
+        'business_expansion' => 40, 'business_launch' => 45, 'forum_post' => 35, 'website_issues' => 25,
     ];
 
     protected const RULES = [

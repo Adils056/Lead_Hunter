@@ -26,6 +26,15 @@ class IntegrationSeeder extends Seeder
                 'monthly_spend_limit_cents' => 5000,
             ],
             [
+                'provider' => 'companies_house',
+                'name' => 'Companies House — New UK Companies (free)',
+                'description' => 'Free government API key (developer.company-information.service.gov.uk → create application → REST key). Finds UK businesses incorporated in the last 14 days in the industries you serve.',
+                'settings' => [],
+                'is_active' => false,
+                'status' => 'pending_credentials',
+                'monthly_spend_limit_cents' => 0,
+            ],
+            [
                 'provider' => 'gemini',
                 'name' => 'Google Gemini — Draft Writing (free tier)',
                 'description' => 'Optional LLM for polishing outreach drafts and the Sales Assistant. Flash-Lite free tier; only public business facts are sent.',
