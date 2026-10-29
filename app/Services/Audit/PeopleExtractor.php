@@ -24,7 +24,8 @@ class PeopleExtractor
         'with', 'view', 'all', 'learn', 'find', 'us', 'we', 'you', 'your', 'free', 'quote', 'news', 'blog', 'latest', 'company', 'limited', 'ltd', 'llc', 'inc',
         'clinic', 'dental', 'care', 'centre', 'center', 'group', 'studio', 'salon', 'restaurant', 'office', 'director', 'directors', 'manager', 'founder', 'owner',
         'managing', 'general', 'head', 'chief', 'executive', 'partner', 'partners', 'board', 'leadership', 'management', 'staff', 'people', 'customer', 'customers',
-        'testimonials', 'reviews', 'review', 'gallery', 'portfolio', 'projects', 'careers', 'jobs', 'faq', 'help', 'support', 'sign', 'login', 'register', 'shop', 'cart'];
+        'testimonials', 'reviews', 'review', 'gallery', 'portfolio', 'projects', 'careers', 'jobs', 'faq', 'help', 'support', 'sign', 'login', 'register', 'shop', 'cart',
+        'contacts', 'enquiries', 'enquiry', 'info', 'sales', 'teams', 'offices', 'locations', 'press', 'media', 'investors', 'events', 'resources', 'insights'];
 
     protected ?string $companyName = null;
 

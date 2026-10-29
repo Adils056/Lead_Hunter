@@ -33,6 +33,9 @@ class ChainBrand
      */
     public const LOCATOR = '#/(store-?locator|store-?finder|find-a-store|locations?/[a-z0-9-]+|stores?/[a-z0-9-]+|branches/|restaurants?/[a-z0-9-]+/[a-z0-9-]+)|[?&]y_source=#i';
 
+    /** Franchise brands that also appear inside an agent's own listing name ("Tawanda Jackson - State Farm Insurance Agent"). */
+    public const FRANCHISE_ANYWHERE = '/\b(state farm|allstate|farmers insurance|edward jones|nationwide insurance|american family insurance|re\/?max|keller williams|century 21|coldwell banker|berkshire hathaway homeservices|h&r block|jackson hewitt|liberty tax|the ups store)\b/i';
+
     /** Category words that are not a name. */
     public const GENERIC = '/^(various|bakery|gym|fitness|pharmacy|chemist|restaurant|cafe|café|coffee|hotel|salon|barber|dentist|dental surgery|dental clinic|clinic|hospital|school|academy|lawyer|law office|accountant|accountants|estate agent|real estate|shop|store|supermarket|grocery|mosque|church|office|company|business|atm|bank|vacant|parking)$/iu';
 
@@ -48,7 +51,7 @@ class ChainBrand
             }
         }
         $name = trim((string) $name);
-        if ($name !== '' && preg_match(self::NAMES, $name)) {
+        if ($name !== '' && (preg_match(self::NAMES, $name) || preg_match(self::FRANCHISE_ANYWHERE, $name))) {
             return "Branch of a national chain ({$name}): run from head office";
         }
         if ($name !== '' && preg_match(self::GENERIC, $name)) {

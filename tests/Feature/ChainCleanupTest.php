@@ -53,4 +53,13 @@ class ChainCleanupTest extends TestCase
         $this->assertSame(['archived', 'archived', 'prospect'], [$pfc->fresh()->status, $shack->fresh()->status, $multi->fresh()->status]);
         $this->assertSame('not_a_fit', $lead->fresh()->lifecycle_stage);
     }
+
+    public function test_franchise_agent_with_brand_inside_its_name_is_archived(): void
+    {
+        $agent = Company::create(['name' => 'Tawanda Jackson - State Farm Insurance Agent', 'country' => 'United States']);
+        $cafe = Company::create(['name' => 'Farmers Market Cafe', 'country' => 'United States']);
+        (require base_path('database/migrations/2026_10_29_000007_archive_franchise_agents.php'))->up();
+
+        $this->assertSame(['archived', 'prospect'], [$agent->fresh()->status, $cafe->fresh()->status]);
+    }
 }
