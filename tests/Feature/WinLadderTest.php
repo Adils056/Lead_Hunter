@@ -101,6 +101,22 @@ class WinLadderTest extends TestCase
         $this->assertSame(['R' => 1, 'A' => 3, 'B' => 2, 'S' => 2, 'C' => 1, 'D' => 4], $counts);
     }
 
+    public function test_in_sequence_says_whether_the_draft_needs_approval_or_is_just_scheduled(): void
+    {
+        $campaign = Campaign::create(['name' => 'AP', 'service_offered' => 'web_redesign', 'status' => 'running', 'created_by' => $this->admin->id, 'is_autopilot' => true]);
+        $pending = $this->lead($this->clinic('Pending Clinic'));
+        CampaignRecipient::create(['campaign_id' => $campaign->id, 'lead_id' => $pending->id, 'status' => 'pending_approval', 'sequence_step' => 1, 'idempotency_key' => 'k1']);
+        $later = $this->lead($this->clinic('Later Clinic'));
+        CampaignRecipient::create(['campaign_id' => $campaign->id, 'lead_id' => $later->id, 'status' => 'approved', 'sequence_step' => 1, 'idempotency_key' => 'k2', 'scheduled_at' => now()->addDays(9)]);
+
+        app(WinLadderService::class)->refreshAll();
+
+        $this->assertSame('S', $pending->fresh()->win_tier);
+        $this->assertStringContainsString('waiting for approval', implode(' ', $pending->fresh()->win_blockers));
+        $this->assertSame('S', $later->fresh()->win_tier);
+        $this->assertStringContainsString('scheduled to send', implode(' ', $later->fresh()->win_blockers));
+    }
+
     public function test_autopilot_first_touches_follow_the_ladder_order_and_page_renders(): void
     {
         $ladder = app(WinLadderService::class);

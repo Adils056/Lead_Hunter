@@ -227,8 +227,14 @@ class WinLadderService
         }
 
         // In sequence
-        if ($lead->exists && $lead->campaignRecipients()->whereIn('status', ['pending_approval', 'approved', 'scheduled', 'queued'])->exists()) {
-            return $this->rung('S', $points, $reasons, ['Draft waiting for approval or scheduled'], 'Check Approvals; nothing else to do for this lead.');
+        $open = $lead->exists ? $lead->campaignRecipients()->whereIn('status', ['pending_approval', 'approved', 'scheduled', 'queued'])->oldest('scheduled_at')->first() : null;
+        if ($open) {
+            // Say which: only a pending_approval draft is on the Approvals page; an approved one just waits for its send time.
+            if ($open->status === 'pending_approval') {
+                return $this->rung('S', $points, $reasons, ['Draft waiting for approval'], 'Approve it on the Approvals page.');
+            }
+            $when = $open->scheduled_at ? Carbon::parse($open->scheduled_at)->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->format('j M, H:i') : 'the next send window';
+            return $this->rung('S', $points, $reasons, ["Approved — scheduled to send {$when}"], 'Nothing to do; it sends automatically.');
         }
         if ($lead->last_contacted_at) {
             $days = (int) Carbon::parse($lead->last_contacted_at)->diffInDays(now());
