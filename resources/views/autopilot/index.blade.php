@@ -55,7 +55,7 @@
                     <span class="badge bg-light text-dark border p-2">{{ $label }} <strong class="ms-1">{{ $states[$k] ?? 0 }}</strong></span>
                 @endforeach
             </div>
-            <div class="small text-muted mt-2">A high score never means "send". Only leads that pass the eligibility gate become <em>Eligible for outreach</em>.</div>
+            <div class="small text-muted mt-2">A high score never means "send". Only leads that pass the eligibility gate become <em>Eligible for outreach</em>. Each lead is counted once, at its current stage (a contacted lead that replies moves to <em>Engaged</em>).</div>
         </div>
         <div class="card-lp p-3">
             <h6 class="fw-bold mb-2">Where Autopilot is searching (learned)</h6>

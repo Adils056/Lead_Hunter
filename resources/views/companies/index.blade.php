@@ -24,7 +24,7 @@
 <!-- Filters -->
 <div class="card-lp p-3 mb-4">
     <form action="{{ route('companies.index') }}" method="GET" class="row g-2 align-items-center">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="input-group input-group-sm">
                 <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-search"></i></span>
                 <input type="text" name="search" class="form-control border-start-0" placeholder="Search by name, domain, or city..." value="{{ $search }}">
@@ -46,7 +46,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-md-1">
+        <div class="col-md-2">
             <div class="form-check small mb-0" title="Registered as a company, or own domain registered, in the last 12 months">
                 <input class="form-check-input" type="checkbox" name="fresh" value="1" id="fresh" onchange="this.form.submit()" @checked(request('fresh'))>
                 <label class="form-check-label" for="fresh">New businesses</label>

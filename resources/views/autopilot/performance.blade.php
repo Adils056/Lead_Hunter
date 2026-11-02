@@ -7,7 +7,7 @@
     <form><select name="days" class="form-select form-select-sm" onchange="this.form.submit()">@foreach([30,90,180,365] as $d)<option value="{{ $d }}" @selected($r['days']==$d)>{{ $d }} days</option>@endforeach</select></form></div>
 </div>
 <div class="row g-3 mb-4">
-    @foreach($r['totals'] as $k => $v)<div class="col-6 col-md-2"><div class="card-lp p-3"><div class="small text-muted">{{ ucwords(str_replace('_',' ',$k)) }}</div><div class="fs-4 fw-bold">{{ $v }}</div></div></div>@endforeach
+    @foreach($r['totals'] as $k => $v)<div class="col-6 col-md-2"><div class="card-lp p-3"><div class="small text-muted">{{ ['contacted' => 'Leads e-mailed'][$k] ?? ucwords(str_replace('_',' ',$k)) }}</div><div class="fs-4 fw-bold">{{ $v }}</div></div></div>@endforeach
 </div>
 <div class="card-lp p-3 mb-4">
     <h6 class="fw-bold mb-1"><i class="bi bi-trophy-fill text-warning me-1"></i>Winning segments</h6>

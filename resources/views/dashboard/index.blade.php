@@ -125,10 +125,10 @@
 <!-- Secondary Delivery & Conversion Grid -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-4 col-xl-2">
-        <div class="card-lp p-3 text-center">
-            <div class="text-muted small fw-semibold text-uppercase">Outreach Sent</div>
+        <div class="card-lp p-3 text-center" title="Every e-mail sent, follow-ups included. Not the number of leads contacted.">
+            <div class="text-muted small fw-semibold text-uppercase">Emails Sent</div>
             <div class="fs-4 fw-bold mt-1 text-dark">{{ $emailsSent }}</div>
-            <div class="small text-muted">{{ $runningCampaigns }} Active Campaigns</div>
+            <div class="small text-muted">incl. follow-ups · {{ $runningCampaigns }} campaigns</div>
         </div>
     </div>
     <div class="col-6 col-md-4 col-xl-2">

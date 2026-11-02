@@ -49,12 +49,21 @@
 
 <div class="card-lp p-3 mb-4">
     <h6 class="fw-bold mb-2">Opportunities to improve</h6>
-    <div class="table-responsive"><table class="table table-sm small align-middle mb-0">
+    <style>
+    @media (max-width: 767.98px) {
+        .gap-table thead { display: none; }
+        .gap-table tr { display: block; padding: .6rem 0; border-bottom: 1px solid var(--bs-border-color); }
+        .gap-table td { display: block; border: 0; padding: .15rem 0; }
+        .gap-table td.text-nowrap { white-space: normal !important; }
+        .gap-table td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; color: var(--bs-secondary-color); }
+    }
+</style>
+    <div class="table-responsive"><table class="table table-sm small align-middle mb-0 gap-table">
         <thead><tr class="text-muted"><th>Finding</th><th>Competitors who already have it</th><th>How to fix</th></tr></thead>
         <tbody>
         @forelse(array_slice($b['gaps'], 0, 12) as $g)
             <tr><td><span class="badge {{ $g['status'] === 'fail' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning' }} me-1">{{ $g['status'] === 'fail' ? 'Problem' : 'Improve' }}</span><strong>{{ $g['label'] }}</strong><div class="text-muted">{{ \Illuminate\Support\Str::limit($g['evidence'], 140) }}</div></td>
-                <td class="text-nowrap">{{ $g['competitors_with_it'] }} of {{ $g['competitors'] }}</td><td>{{ $g['fix'] }}</td></tr>
+                <td class="text-nowrap" data-label="Competitors who have it">{{ $g['competitors_with_it'] }} of {{ $g['competitors'] }}</td><td data-label="How to fix">{{ $g['fix'] }}</td></tr>
         @empty <tr><td colspan="3" class="text-muted">No problems found by the audit.</td></tr> @endforelse
         </tbody>
     </table></div>
