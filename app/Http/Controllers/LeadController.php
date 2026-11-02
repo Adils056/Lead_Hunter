@@ -301,7 +301,7 @@ class LeadController extends Controller
         }
 
         // Store file in temp storage for execution
-        $storedPath = $file->store('temp_imports');
+        $storedPath = $file->store('temp_imports', 'local');
         session(['import_csv_path' => $storedPath, 'import_csv_headers' => $headers]);
 
         return view('leads.import_mapping', compact('headers', 'rows'));
@@ -312,13 +312,14 @@ class LeadController extends Controller
         $this->authorize('import', Lead::class);
 
         $csvPath = session('import_csv_path');
-        if (!$csvPath || !file_exists(storage_path('app/' . $csvPath))) {
+        // the file lives on the "local" disk (storage/app/private since Laravel 11), not directly under storage/app
+        $fullPath = $csvPath ? \Illuminate\Support\Facades\Storage::disk('local')->path($csvPath) : null;
+        if (!$fullPath || !file_exists($fullPath)) {
             return redirect()->route('leads.import')->with('error', 'Import session expired. Please re-upload CSV.');
         }
 
         $columnMapping = $request->input('mapping', []);
 
-        $fullPath = storage_path('app/' . $csvPath);
         $rows = [];
         if (($handle = fopen($fullPath, 'r')) !== false) {
             $headers = fgetcsv($handle, 2000, ",");

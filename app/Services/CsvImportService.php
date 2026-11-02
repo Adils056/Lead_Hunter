@@ -42,6 +42,10 @@ class CsvImportService
             $rowNum = $index + 2; // +1 for 0-index, +1 for header row
 
             $fullName = trim($row[$columnMapping['full_name'] ?? ''] ?? '');
+            if ($fullName === '') {
+                // files with separate first / last name columns (Apollo, LinkedIn, most CRMs) need no full-name column
+                $fullName = trim(self::column($row, ['first_name', 'firstname', 'first name', 'given name']) . ' ' . self::column($row, ['last_name', 'lastname', 'last name', 'surname', 'family name']));
+            }
             $email = strtolower(trim($row[$columnMapping['email'] ?? ''] ?? ''));
             $companyName = trim($row[$columnMapping['company_name'] ?? ''] ?? '');
             $jobTitle = trim($row[$columnMapping['job_title'] ?? ''] ?? '');
@@ -153,5 +157,18 @@ class CsvImportService
             'skipped' => $skippedCount,
             'errors' => $errors,
         ];
+    }
+
+    /** Value of the first column whose header matches one of $names (case, spaces and _ ignored). */
+    public static function column(array $row, array $names): string
+    {
+        $want = array_map(fn ($n) => str_replace([' ', '_', '-'], '', strtolower($n)), $names);
+        foreach ($row as $header => $value) {
+            if (in_array(str_replace([' ', '_', '-'], '', strtolower((string) $header)), $want, true)) {
+                return trim((string) $value);
+            }
+        }
+
+        return '';
     }
 }

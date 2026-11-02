@@ -23,9 +23,9 @@
                 <td class="ps-3 text-muted">{{ $p->priority }}</td>
                 <td><div class="fw-semibold">{{ $p->name }}</div><div class="text-muted" style="font-size:11px">{{ $p->kind === 'gemini' ? 'gemini' : 'openai-compatible' }}</div></td>
                 <td class="font-monospace">{{ $p->model }}</td>
-                <td class="font-monospace">{{ $p->maskedKey() }}</td>
-                <td class="font-monospace">{{ $p->usedToday() }}{{ $p->daily_limit ? ' / ' . $p->daily_limit : '' }}</td>
-                <td><span class="badge {{ $cls }}" @if($p->last_error) title="{{ $p->last_error }}" @endif>{{ $label }}</span></td>
+                <td class="font-monospace text-nowrap">{{ $p->maskedKey() }}</td>
+                <td class="font-monospace text-nowrap">{{ $p->usedToday() }}{{ $p->daily_limit ? ' / ' . $p->daily_limit : '' }}</td>
+                <td class="text-nowrap"><span class="badge {{ $cls }}" @if($p->last_error) title="{{ $p->last_error }}" @endif>{{ $label }}</span></td>
                 <td class="text-end pe-3 text-nowrap">
                     <form method="POST" action="{{ route('settings.ai-providers.test', $p) }}" class="d-inline">@csrf<button class="btn btn-sm btn-light border">Test</button></form>
                     <form method="POST" action="{{ route('settings.ai-providers.toggle', $p) }}" class="d-inline">@csrf<button class="btn btn-sm btn-light border">{{ $p->is_active ? 'Turn off' : 'Turn on' }}</button></form>

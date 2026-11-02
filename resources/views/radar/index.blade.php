@@ -13,7 +13,7 @@
     @foreach($lv as $k => [$label, $cls, $icon])
         <div class="col-4"><a href="{{ route('radar.index', array_merge(array_filter($f), ['level' => $f['level'] === $k ? null : $k])) }}" class="text-decoration-none">
             <div class="card-lp p-3 {{ $f['level'] === $k ? 'border border-2 border-dark' : '' }}">
-                <div class="d-flex justify-content-between align-items-center"><span class="badge {{ $cls }}"><i class="bi {{ $icon }} me-1"></i>{{ $label }}</span><span class="fs-4 fw-bold text-dark">{{ $counts[$k] ?? 0 }}</span></div>
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-1"><span class="badge {{ $cls }}"><i class="bi {{ $icon }} me-1"></i>{{ $label }}</span><span class="fs-4 fw-bold text-dark lh-1">{{ $counts[$k] ?? 0 }}</span></div>
             </div></a></div>
     @endforeach
 </div>
@@ -35,7 +35,7 @@
 <div class="card-lp p-0">
     @forelse($items as $it)
         @php([$label, $cls, $icon] = $lv[$it->intent_level] ?? $lv['normal'])
-        <div class="p-3 border-bottom d-flex gap-3 align-items-start">
+        <div class="p-3 border-bottom d-flex flex-wrap flex-md-nowrap gap-3 align-items-start">
             <div class="text-center" style="min-width: 64px"><span class="badge {{ $cls }} d-block mb-1"><i class="bi {{ $icon }} me-1"></i>{{ $label }}</span><span class="small text-muted">{{ $it->intent_score }}/100</span></div>
             <div class="flex-grow-1" style="min-width: 0">
                 <div class="fw-semibold text-break">@if($it->url)<a href="{{ $it->url }}" target="_blank" rel="noopener noreferrer" class="text-dark">{{ $it->title }}</a>@else{{ $it->title }}@endif</div>
@@ -47,7 +47,7 @@
                 @if($it->excerpt)<div class="small text-break">{{ \Illuminate\Support\Str::limit($it->excerpt, 260) }}</div>@endif
                 @if($it->reasons)<div class="mt-1">@foreach($it->reasons as $r)<span class="badge bg-light text-dark border me-1 fw-normal">{{ $r }}</span>@endforeach</div>@endif
             </div>
-            <div class="d-flex flex-column gap-1">
+            <div class="d-flex flex-row flex-md-column gap-1 ms-auto ms-md-0">
                 @foreach(['contacted' => 'Contacted', 'dismissed' => 'Dismiss'] as $st => $btn)
                     @if($it->status !== $st)<form method="POST" action="{{ route('radar.status', $it) }}">@csrf<input type="hidden" name="status" value="{{ $st }}"><button class="btn btn-sm btn-light border w-100">{{ $btn }}</button></form>@endif
                 @endforeach
