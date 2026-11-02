@@ -60,6 +60,17 @@
                 <i class="bi bi-pencil"></i>
                 <span>Edit</span>
             </a>
+            @can('delete', $lead)
+            <form action="{{ route('leads.destroy', $lead) }}" method="POST"
+                  onsubmit="return confirm('Delete this lead? Pending messages to them are cancelled. If they were already e-mailed, their address goes on the do-not-contact list.');">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
+                    <i class="bi bi-trash"></i>
+                    <span>Delete</span>
+                </button>
+            </form>
+            @endcan
         </div>
     </div>
 </div>
