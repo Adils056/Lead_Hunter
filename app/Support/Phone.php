@@ -34,4 +34,38 @@ class Phone
 
         return strlen(ltrim($digits, '0')) >= 7 ? $code . ltrim($digits, '0') : null;
     }
+
+    /** Mobile prefixes (after the country code) where a number on WhatsApp is likely; anything else there is a landline. */
+    protected const MOBILE_PREFIX = ['92' => '3', '971' => '5', '966' => '5', '974' => ['3', '5', '6', '7'], '44' => '7', '61' => '4', '353' => '8', '64' => '2'];
+
+    /** Countries where businesses mostly list office lines and rarely use WhatsApp for customers. */
+    protected const EMAIL_FIRST = ['United States', 'Canada', 'United Kingdom', 'Australia', 'Ireland', 'New Zealand', 'Germany'];
+
+    /**
+     * A warning to show before opening WhatsApp, or null when the number looks like a mobile in a WhatsApp market.
+     * Landline: a number that cannot be on WhatsApp. US / Canada numbers do not show mobile vs landline at all.
+     */
+    public static function whatsappHint(?string $international, ?string $country): ?string
+    {
+        if (!$international) {
+            return null;
+        }
+        foreach (self::MOBILE_PREFIX as $code => $mobile) {
+            if (str_starts_with($international, (string) $code)) {
+                $rest = substr($international, strlen((string) $code));
+                $isMobile = collect((array) $mobile)->contains(fn ($p) => str_starts_with($rest, (string) $p));
+                if (!$isMobile) {
+                    return 'This looks like a landline, which cannot be on WhatsApp. Email or call instead.';
+                }
+
+                return in_array($country, self::EMAIL_FIRST, true)
+                    ? 'A mobile number, but businesses in ' . $country . ' rarely answer on WhatsApp. Email usually works better.'
+                    : null;
+            }
+        }
+
+        return in_array($country, self::EMAIL_FIRST, true) || str_starts_with($international, '1')
+            ? 'Businesses in ' . ($country ?: 'this country') . ' usually list an office landline that is not on WhatsApp. Email usually works better.'
+            : null;
+    }
 }

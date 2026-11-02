@@ -176,6 +176,9 @@
                     <button class="btn btn-sm btn-success text-nowrap"><i class="bi bi-whatsapp me-1"></i>Open in WhatsApp</button>
                 </form>
                 <div class="small text-muted mt-2">To +{{ $waPhone }}. Opens WhatsApp with the message filled in; you check it and press send.</div>
+                @if($waHint = \App\Support\Phone::whatsappHint($waPhone, $lead->country ?: $lead->company?->country))
+                    <div class="small mt-2 p-2 rounded bg-warning-subtle text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>{{ $waHint }}</div>
+                @endif
             @endif
         </div>
         <!-- Contact & Deliverability Status -->
