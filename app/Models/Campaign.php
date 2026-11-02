@@ -83,8 +83,8 @@ class Campaign extends Model
             return false;
         }
 
-        if ($this->last_sent_date !== now()->toDateString()) {
-            return true; // New day, limit resets
+        if (!$this->last_sent_date?->isToday()) {
+            return true; // New day, limit resets (last_sent_date is cast to a date: compare dates, not strings)
         }
 
         return $this->sent_today < $this->daily_limit;
@@ -92,7 +92,7 @@ class Campaign extends Model
 
     public function incrementSentCount(): void
     {
-        if ($this->last_sent_date !== now()->toDateString()) {
+        if (!$this->last_sent_date?->isToday()) {
             $this->sent_today = 1;
             $this->last_sent_date = now()->toDateString();
         } else {

@@ -35,6 +35,20 @@ class Deal extends Model
         ];
     }
 
+    public const CLOSED_STAGES = ['won', 'closed_won', 'lost', 'closed_lost'];
+
+    protected static function booted(): void
+    {
+        // "won this month" reports read closed_at: stamp it when a deal closes, clear it if the deal is reopened
+        static::saving(function (Deal $deal) {
+            if (in_array($deal->stage, self::CLOSED_STAGES, true)) {
+                $deal->closed_at ??= now();
+            } elseif ($deal->isDirty('stage')) {
+                $deal->closed_at = null;
+            }
+        });
+    }
+
     public function lead(): BelongsTo
     {
         return $this->belongsTo(Lead::class);

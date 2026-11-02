@@ -156,12 +156,18 @@ class CampaignController extends Controller
     public function resume(Campaign $campaign)
     {
         $this->authorize('update', $campaign);
+        $admin = Auth::user()->isAdmin();
 
-        if ($campaign->require_approval && !$campaign->approved_by) {
-            return back()->with('error', 'Cannot resume: Campaign requires administrator approval before sending.');
+        // A campaign only sends once an administrator has approved it, whatever its per-message approval setting,
+        // and only an administrator can lift an emergency stop.
+        if (!$campaign->approved_by && !$admin) {
+            return back()->with('error', 'Cannot resume: an administrator must approve this campaign before it sends.');
+        }
+        if ($campaign->emergency_stopped && !$admin) {
+            return back()->with('error', 'Cannot resume: only an administrator can lift an emergency stop.');
         }
 
-        $campaign->update(['status' => 'running', 'emergency_stopped' => false]);
+        $campaign->update(['status' => 'running', 'emergency_stopped' => false, 'approved_by' => $campaign->approved_by ?? Auth::id()]);
         AuditLog::record('campaign_resumed', $campaign);
 
         return back()->with('success', "Campaign '{$campaign->name}' resumed.");

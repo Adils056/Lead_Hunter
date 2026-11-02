@@ -746,7 +746,7 @@ Artisan::command('leadpilot:status', function (\App\Services\Outreach\SequenceEn
         $fresh = $imap && $imap->last_success_at && $imap->last_success_at->gt(now()->subHour()) && $imap->consecutive_failures === 0;
         $add($fresh ? 'PASS' : 'FAIL', 'Reply sync (IMAP)', 'last OK ' . $ago($imap?->last_success_at) . ' · ' . \App\Models\InboundReply::where('created_at', '>=', now()->subDays(7))->count() . ' repl(ies) in 7 d');
     } else {
-        $add('WARN', 'Reply sync (IMAP)', 'off — replies are not read, follow-ups will not stop on a reply');
+        $add('WARN', 'Reply sync (IMAP)', 'off — replies are not read, so follow-ups are held until it is set up');
     }
 
     $open = \App\Models\Incident::where('status', 'open')->latest()->get();
