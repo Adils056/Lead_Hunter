@@ -344,6 +344,39 @@ class LeadController extends Controller
         return redirect()->route('leads.index')->with('success', $msg);
     }
 
+    /**
+     * Delete a lead (soft delete, admin only). Its history (sent e-mails, replies, deals) stays in the database.
+     * Anything still waiting to go out to this lead is cancelled first, and an address we already e-mailed is
+     * suppressed so Autopilot cannot rediscover the same person and e-mail them again as a "new" lead.
+     */
+    public function destroy(Lead $lead)
+    {
+        $this->authorize('delete', $lead);
+
+        $name = $lead->full_name ?: ($lead->email ?: "Lead #{$lead->id}");
+        $why = 'Lead deleted by ' . (Auth::user()?->name ?? 'an admin') . '.';
+        $cancelled = app(\App\Services\Sales\ReplyOutcomeService::class)->stopSequences($lead, $why);
+
+        $suppressed = false;
+        if ($lead->email && $lead->campaignRecipients()->whereNotNull('sent_at')->exists()) {
+            Suppression::addSuppression($lead->email, 'lead_deleted', 'admin', Auth::id());
+            $suppressed = true;
+        }
+
+        AuditLog::record('lead_deleted', $lead, ['email' => $lead->email, 'cancelled_messages' => $cancelled, 'suppressed' => $suppressed]);
+        $lead->delete();
+
+        $msg = "Lead \"{$name}\" deleted.";
+        if ($cancelled) {
+            $msg .= " {$cancelled} pending message(s) cancelled.";
+        }
+        if ($suppressed) {
+            $msg .= ' This address was already e-mailed, so it is now on the do-not-contact list.';
+        }
+
+        return redirect()->route('leads.index')->with('success', $msg);
+    }
+
     public function export(Request $request)
     {
         $this->authorize('export', Lead::class);

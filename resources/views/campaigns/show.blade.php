@@ -180,10 +180,14 @@
                 @forelse($recipients as $rec)
                 <tr>
                     <td>
+                        @if($rec->lead)
                         <a href="{{ route('leads.show', $rec->lead) }}" class="fw-bold text-dark text-decoration-none">
                             {{ $rec->lead->full_name }}
                         </a>
                         <div class="small text-muted">{{ $rec->lead->email }} • {{ $rec->lead->company?->name ?? 'Direct' }}</div>
+                        @else
+                        <span class="fw-bold text-muted">Deleted lead</span>
+                        @endif
                     </td>
 
                     <td>

@@ -56,7 +56,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/leads/import/process', [LeadController::class, 'processImport'])->name('leads.import.process');
     Route::post('/leads/{lead}/rescore', [LeadController::class, 'rescore'])->name('leads.rescore');
     Route::post('/leads/{lead}/verify-email', [LeadController::class, 'verifyEmail'])->name('leads.verify-email');
-    Route::resource('leads', LeadController::class)->except(['destroy']);
+    Route::resource('leads', LeadController::class);
 
     // Buying Intent Signals
     Route::get('/buying-signals', [BuyingSignalController::class, 'index'])->name('buying-signals.index');
