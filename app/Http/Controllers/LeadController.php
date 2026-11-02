@@ -476,9 +476,12 @@ class LeadController extends Controller
     public function winLadderRefresh(\App\Services\Outreach\WinLadderService $ladder)
     {
         $this->authorize('viewAny', Lead::class);
-        $counts = $ladder->refreshAll();
+        // only leads changed since their last ranking (and unranked ones): recomputing all ~8k in a web request timed out
+        $counts = $ladder->refreshAll(true);
 
-        return back()->with('success', 'Ladder recomputed for ' . array_sum($counts) . " lead(s): {$counts['A']} ready to email now, {$counts['B']} one fix away, {$counts['R']} replied.");
+        $n = array_sum($counts);
+
+        return back()->with('success', $n ? "Ladder updated for {$n} lead(s) that changed since the last ranking: {$counts['A']} of them are ready to email now." : 'The ladder is already up to date.');
     }
 
     public function winLadderExport(Request $request, \App\Services\Outreach\WinLadderService $ladder)

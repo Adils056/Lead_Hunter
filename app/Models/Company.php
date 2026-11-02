@@ -19,6 +19,15 @@ class Company extends Model
     {
         // the short, fixed industry list used by filters and reports (raw category stays in `industry`)
         static::saving(function (Company $c) {
+            // a website is shown as a link: only http(s) is kept, a bare domain gets https://, anything else
+            // (javascript:, data:, mailto: from a CSV or a scraped page) is dropped
+            if ($c->isDirty('website') && $c->website !== null) {
+                $w = trim((string) $c->website);
+                if ($w !== '' && !preg_match('#^[a-z][a-z0-9+.-]*:#i', $w) && preg_match('#^[\w-]+(\.[\w-]+)+(/.*)?$#u', $w)) {
+                    $w = 'https://' . $w;
+                }
+                $c->website = preg_match('#^https?://[^\s/]+#i', $w) ? $w : null;
+            }
             static $hasColumn = null; // the code can be pulled a minute before `migrate` adds the column
             $hasColumn ??= \Illuminate\Support\Facades\Schema::hasColumn('companies', 'industry_group');
             if ($hasColumn && ($c->isDirty('industry') || ($c->industry && !$c->industry_group))) {

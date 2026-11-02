@@ -43,6 +43,8 @@ class OutboxController extends Controller
     public function show(CampaignRecipient $recipient)
     {
         $recipient->load(['lead.company', 'campaign', 'replies' => fn ($r) => $r->oldest('received_at')]);
+        // the conversation belongs to the lead: whoever may not open the lead may not read its e-mails
+        $recipient->lead ? $this->authorize('view', $recipient->lead) : abort_unless(auth()->user()?->isAdmin(), 403);
         $thread = CampaignRecipient::where('lead_id', $recipient->lead_id)->whereNotNull('sent_at')->oldest('sent_at')->get();
         $otherReplies = InboundReply::where('lead_id', $recipient->lead_id)->whereNotIn('id', $recipient->replies->pluck('id'))->oldest('received_at')->get();
 

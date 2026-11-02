@@ -134,6 +134,7 @@ class WebhookProcessorService
                 if ($recipient) {
                     $recipient->update([
                         'status' => 'opted_out',
+                        'bounce_type' => 'complaint', // what the complaint-spike monitor counts (HealthService)
                         'error_message' => 'Spam complaint recorded',
                     ]);
                 }

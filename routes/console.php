@@ -661,7 +661,7 @@ Artisan::command('leadpilot:go-autonomous {--live : Also switch outreach mode to
         'allow_mx_only' => false,
         'allow_shared_inbox' => true, // local businesses publish one inbox (info@); tender contacts stay excluded
         'max_daily_sends' => max(1, (int) config('leadpilot.autopilot.max_first_touch_per_day', 25)),
-        'emergency_stop' => false,
+        // an emergency stop is a person's decision: it is lifted in Settings → Outreach Engine, never by this command
     ] + ($this->option('live') ? ['mode' => 'live', 'activated_at' => now()] : []));
     foreach (['discovery.free', 'enrichment.audit', 'enrichment.verify_email', 'scoring.run', 'drafting.ai', 'outreach.first_touch', 'outreach.follow_up'] as $action) {
         $policy->set($action, 'automatic');
@@ -680,6 +680,9 @@ Artisan::command('leadpilot:go-autonomous {--live : Also switch outreach mode to
     ]);
     if ($settings->mode !== 'live') {
         $this->warn('Mode is still ' . $settings->mode . ': leads are found, verified, scored and drafted, but nothing is sent. Run again with --live when ready.');
+    }
+    if ($settings->isEmergencyStopped()) {
+        $this->warn('The emergency stop is ON and stays on: nothing is sent until an admin lifts it in Settings → Outreach Engine.');
     }
 
     return 0;
