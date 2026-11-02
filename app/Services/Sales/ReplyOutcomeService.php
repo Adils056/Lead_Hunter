@@ -20,10 +20,14 @@ class ReplyOutcomeService
     public function handle(InboundReply $reply): void
     {
         $r = app(ReplyClassifier::class)->classify($reply->body_text, optional($reply->lead)->contact_status === 'identified' ? $reply->lead->first_name : null);
-        $reply->update(['category' => $r['category'], 'classification' => ReplyClassifier::legacyLabel($r), 'ai_confidence' => $r['confidence'], 'ai_reasoning' => $r['reasoning']]);
-
         $threshold = (int) config('leadpilot.approvals.reply_confidence_threshold', 85);
-        if ($r['category'] !== 'unsubscribe' && ($r['category'] === 'uncertain' || $r['confidence'] < $threshold)) {
+        $needsHuman = $r['category'] !== 'unsubscribe' && ($r['category'] === 'uncertain' || $r['confidence'] < $threshold);
+        // A guess waiting for a human is not a classification: stored as "uncertain" so it is never counted as a
+        // positive (or a decline) in the metrics before someone confirms it. The guess stays on the approval request.
+        $stored = $needsHuman && $r['category'] !== 'out_of_office' ? ['category' => 'uncertain'] : $r;
+        $reply->update(['category' => $stored['category'], 'classification' => ReplyClassifier::legacyLabel($stored), 'ai_confidence' => $r['confidence'], 'ai_reasoning' => $r['reasoning']]);
+
+        if ($needsHuman) {
             $this->stopSequences($reply->lead, 'Reply received — awaiting human classification.');
             app(ApprovalService::class)->request('low_confidence_reply', "reply-classify:{$reply->id}", [
                 'title' => 'Classify a prospect reply: ' . ($reply->lead?->company?->name ?? $reply->from_email),
@@ -57,17 +61,17 @@ class ReplyOutcomeService
         switch ($category) {
             case 'unsubscribe':
                 Suppression::addSuppression($reply->from_email, 'unsubscribe', 'reply_intent');
-                $lead->update(['lifecycle_stage' => 'not_a_fit']);
+                $lead->moveStage('not_a_fit');
                 break;
             case 'not_interested':
-                $lead->update(['lifecycle_stage' => 'lost']);
+                $lead->moveStage('lost');
                 break;
             case 'out_of_office':
                 $back = app(ConversionAssistantService::class)->parseReturnDate($r['return_date_text'] ?? null) ?? now()->addDays(7);
                 $lead->update(['next_action_date' => $back->toDateString(), 'next_action_note' => 'Out of office — follow-ups resume after return.']);
                 break;
             case 'interested':
-                $lead->update(['lifecycle_stage' => 'interested']);
+                $lead->moveStage('interested');
                 app(\App\Services\Autopilot\SearchAllocator::class)->recordPositive($lead);
                 $this->task($lead, 'Hot lead replied with interest — respond today', 'high');
                 $this->proposeMeeting($reply, $lead);
@@ -75,7 +79,7 @@ class ReplyOutcomeService
             case 'request_info':
             case 'objection':
             case 'referral':
-                $lead->update(['lifecycle_stage' => 'replied']);
+                $lead->moveStage('replied');
                 if ($category === 'request_info') {
                     app(\App\Services\Autopilot\SearchAllocator::class)->recordPositive($lead);
                 }
@@ -96,7 +100,7 @@ class ReplyOutcomeService
                 }
                 break;
             default:
-                $lead->update(['lifecycle_stage' => 'replied']);
+                $lead->moveStage('replied');
         }
     }
 
