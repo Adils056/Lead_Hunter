@@ -81,6 +81,15 @@ class OwnerRequestsP3Test extends TestCase
         $this->assertSame('971501234567', Phone::international('+971 50 123 4567', null));
         $this->assertNull(Phone::international('0300 1234567', 'Atlantis'), 'unknown country: never guess a code');
 
+        // 2 Nov live: a US office number opened WhatsApp, which said the number is not on WhatsApp
+        $this->assertNull(Phone::whatsappHint('923001234567', 'Pakistan'), 'a Pakistani mobile: WhatsApp is right');
+        $this->assertStringContainsString('landline', Phone::whatsappHint('924235761234', 'Pakistan'));
+        $this->assertNull(Phone::whatsappHint('971501234567', 'United Arab Emirates'));
+        $this->assertStringContainsString('landline', Phone::whatsappHint('97143001234', 'United Arab Emirates'));
+        $this->assertStringContainsString('Email usually works better', Phone::whatsappHint('16507617731', 'United States'));
+        $this->assertStringContainsString('landline', Phone::whatsappHint('442079460018', 'United Kingdom'));
+        $this->assertStringContainsString('rarely answer', Phone::whatsappHint('447700900123', 'United Kingdom'));
+
         $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
         $c = Company::create(['name' => 'Smile Dental Ltd', 'website' => 'https://smile.example', 'domain' => 'smile.example', 'country' => 'Pakistan', 'public_phone' => '042 35761234']);
         WebsiteAudit::create(['company_id' => $c->id, 'url' => $c->website, 'status' => 'completed', 'http_status' => 200, 'opportunity_score' => 40,
@@ -88,7 +97,7 @@ class OwnerRequestsP3Test extends TestCase
         $lead = Lead::create(['company_id' => $c->id, 'first_name' => 'Ayesha', 'last_name' => 'Khan', 'full_name' => 'Ayesha Khan', 'email' => 'ayesha@smile.example',
             'contact_status' => 'identified', 'country' => 'Pakistan']);
 
-        $this->actingAs($admin)->get(route('leads.show', $lead))->assertOk()->assertSee('Open in WhatsApp')->assertSee('+924235761234');
+        $this->actingAs($admin)->get(route('leads.show', $lead))->assertOk()->assertSee('Open in WhatsApp')->assertSee('+924235761234')->assertSee('looks like a landline');
         $tpl = WhatsappTemplate::where('purpose', 'first_contact')->firstOrFail();
         $res = $this->actingAs($admin)->post(route('leads.whatsapp', $lead), ['template_id' => $tpl->id]);
         $url = $res->headers->get('Location');
