@@ -309,7 +309,11 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
         ->whereDoesntHave('leads', fn ($q) => $q->where('contact_status', 'identified'))
         // JSON operators, not LIKE: MySQL stores JSON as {"key": value} (with a space), SQLite as written
         ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('contacts_found->people_crawl', '>=', \App\Services\Audit\WebsiteAuditService::PEOPLE_CRAWL_VERSION))
-        ->withMax('leads', 'overall_score')->orderByDesc('leads_max_overall_score')
+        // any attempt in the last 7 days counts (as in the autopilot): a site that errors is not retried every run
+        ->whereDoesntHave('websiteAudits', fn ($q) => $q->where('created_at', '>=', now()->subDays(7)))
+        // closest to "email now" first: companies with a rung-B lead, then the best score
+        ->withExists(['leads as one_fix_away' => fn ($q) => $q->where('win_tier', 'B')])
+        ->withMax('leads', 'overall_score')->orderByDesc('one_fix_away')->orderByDesc('leads_max_overall_score')
         ->limit((int) $this->option('limit'))->get();
 
     $done = $withPeople = $named = 0;
@@ -321,6 +325,9 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
         try {
             $audit = $audits->audit($c);
         } catch (\Throwable $e) {
+            // record the attempt so this company waits 7 days instead of being retried (and failing) every run
+            \App\Models\WebsiteAudit::create(['company_id' => $c->id, 'url' => mb_substr((string) $c->website, 0, 500), 'status' => 'failed',
+                'summary' => 'Audit failed: ' . mb_substr($e->getMessage(), 0, 200), 'audited_at' => now()]);
             $this->line("  {$c->id} {$c->name}: " . mb_substr($e->getMessage(), 0, 80));
             continue;
         }
@@ -900,6 +907,11 @@ Artisan::command('leadpilot:overture-warm {--city=* : "City, Country" to downloa
 Schedule::command('leadpilot:find-websites --limit=80 --seconds=900')->dailyAt('02:30')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
 Schedule::command('leadpilot:english-names --limit=100 --seconds=420')->dailyAt('02:55')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('03:10')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30)->runInBackground();
+// Discovery adds more shared-inbox companies a day than one nightly run can read; three short daytime runs keep the
+// unaudited backlog shrinking (each audit is how an owner's name, website gaps and the first-line evidence are found).
+foreach (['09:10', '15:10', '21:10'] as $at) {
+    Schedule::command('leadpilot:find-people --limit=60 --seconds=540')->dailyAt($at)->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
+}
 Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
 // second pass for decision-makers that daytime audits (autopilot, website finder) put on the record
 Schedule::command('leadpilot:find-emails --limit=40 --seconds=420')->dailyAt('14:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();

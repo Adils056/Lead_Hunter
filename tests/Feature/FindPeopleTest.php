@@ -45,6 +45,30 @@ class FindPeopleTest extends TestCase
         $this->artisan('leadpilot:find-people')->expectsOutputToContain('Re-audited 0 of 0 companies')->assertExitCode(0);
     }
 
+    public function test_find_people_takes_one_fix_away_companies_first_and_does_not_retry_failures_every_run(): void
+    {
+        $mk = function (string $name, int $score, string $tier) {
+            $c = Company::create(['name' => $name, 'website' => 'https://' . strtolower($name) . '.test/', 'domain' => strtolower($name) . '.test']);
+            Lead::create(['company_id' => $c->id, 'full_name' => "{$name} inbox", 'email' => 'info@' . strtolower($name) . '.test', 'contact_status' => 'generic_inbox', 'overall_score' => $score]);
+            \Illuminate\Support\Facades\DB::table('leads')->where('company_id', $c->id)->update(['win_tier' => $tier]); // as the ladder stores it
+
+            return $c;
+        };
+        $nurture = $mk('Nurture', 80, 'C');
+        $oneFix = $mk('Onefix', 60, 'B');
+        $recent = $mk('Recent', 90, 'B');
+        \App\Models\WebsiteAudit::create(['company_id' => $recent->id, 'url' => 'https://recent.test/', 'status' => 'failed', 'summary' => 'Audit failed: timeout', 'audited_at' => now()->subDays(2)]);
+        $this->mock(\App\Services\Audit\WebsiteAuditService::class, fn ($m) => $m->shouldReceive('audit')->andThrow(new \RuntimeException('site down')));
+
+        // rung B before a higher-scoring rung-C company; the one tried 2 days ago waits its 7 days
+        $this->artisan('leadpilot:find-people --limit=1')->expectsOutputToContain("{$oneFix->id} Onefix: site down")->assertExitCode(0);
+        $this->assertSame('failed', $oneFix->websiteAudits()->latest('id')->value('status'), 'the failed attempt is recorded');
+
+        // the next run does not retry the failing site: it moves on
+        $this->artisan('leadpilot:find-people --limit=1')->expectsOutputToContain("{$nurture->id} Nurture: site down")->assertExitCode(0);
+        $this->assertSame(1, $recent->websiteAudits()->count(), 'never retried inside 7 days');
+    }
+
     public function test_team_page_on_https_www_is_read_when_the_homepage_is_plain_http(): void
     {
         // live case (RK Law Group): website stored as http://, its menu links to https://www. pages
