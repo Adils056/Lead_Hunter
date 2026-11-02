@@ -69,6 +69,13 @@ class AutopilotEngineTest extends TestCase
         ]);
     }
 
+    /** Replies are being read: IMAP configured and synced just now (follow-ups only go out while this holds). */
+    protected function replySyncHealthy(): void
+    {
+        config(['leadpilot.imap.enabled' => true, 'leadpilot.imap.username' => 'leads@eziline.test', 'leadpilot.imap.password' => 'x', 'leadpilot.imap.host' => 'imap.test']);
+        app(\App\Services\Integrations\ProviderHealthService::class)->success('imap', true);
+    }
+
     protected function qualifiedLead(): Lead
     {
         $this->weakSite();
@@ -112,6 +119,8 @@ class AutopilotEngineTest extends TestCase
         $rec->update(['sent_at' => now()->subDays(4)]);
         $lead->update(['last_contacted_at' => now()->subDays(4)]);
         EmailLog::where('lead_id', $lead->id)->update(['occurred_at' => now()->subDays(4)]);
+        $this->assertSame(0, $engine->planFollowUps()['created'], 'no follow-up while replies are not being read');
+        $this->replySyncHealthy();
         $fu = $engine->planFollowUps();
         $this->assertSame(1, $fu['created'], json_encode($fu));
         $this->travel(1)->hours(); // messages carry a 0-40 min send jitter
@@ -154,6 +163,7 @@ class AutopilotEngineTest extends TestCase
         $this->assertSame(1, $engine->dispatchDue()['sent']);
 
         // duplicate guard: another approved message for same lead within 24h is deferred
+        $this->replySyncHealthy();
         $rec = CampaignRecipient::where('lead_id', $lead->id)->first();
         $dup = CampaignRecipient::create(['campaign_id' => $rec->campaign_id, 'lead_id' => $lead->id, 'status' => 'approved', 'idempotency_key' => 'dup', 'sequence_step' => 2, 'parent_recipient_id' => $rec->id, 'personalized_subject' => 'Re: x', 'personalized_body' => 'y']);
         $engine->dispatchDue();

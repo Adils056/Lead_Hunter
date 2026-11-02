@@ -166,6 +166,12 @@ class CampaignDeliveryService
 
             // Run backend 10-Point Eligibility Gate
             $eligibility = $this->eligibilityGate->evaluate($lead, $campaign, $locked, $isAutomated);
+            if (!$eligibility->isEligible && array_keys($eligibility->failedChecks) === ['daily_frequency_limit']) {
+                // only today's global cap stands in the way: approved work waits for tomorrow, it is never dropped
+                $locked->update(['status' => 'queued', 'error_message' => 'Daily send limit reached. Postponed to the next sending day.']);
+
+                return false;
+            }
             if (!$eligibility->isEligible) {
                 $rejectionStatus = in_array($eligibility->recommendedLifecycleStage, ['opted_out', 'not_a_fit']) ? 'opted_out' : 'skipped';
                 $locked->update([

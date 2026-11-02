@@ -341,6 +341,8 @@ return [
     ],
 
     'autopilot' => [
+        // follow-ups wait while replies are not being read (IMAP off, paused, or no successful sync for this long)
+        'reply_sync_max_age_minutes' => (int) env('LEADPILOT_REPLY_SYNC_MAX_AGE_MINUTES', 180),
         'discovery_runs_per_cycle' => 2,
         'audits_per_cycle' => 10,
         // Time budgets (seconds) so one cycle stays well under shared-hosting process limits; whatever is left

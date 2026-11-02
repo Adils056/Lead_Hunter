@@ -141,7 +141,7 @@ class SequenceEngine
     public function planFollowUps(int $limit = 25): array
     {
         $out = ['created' => 0, 'pending_approval' => 0];
-        if ($this->workflows->isPaused('follow_ups') || $this->policy->isProhibited('outreach.follow_up')) {
+        if ($this->workflows->isPaused('follow_ups') || $this->policy->isProhibited('outreach.follow_up') || $this->replySyncProblem()) {
             return $out;
         }
         // one source of truth with the Outreach Engine settings: longer delay wins, smaller cap wins
@@ -236,6 +236,10 @@ class SequenceEngine
                 $out['not_sent'][] = "#{$rec->id}: {$workflow} paused";
                 continue;
             }
+            if ($rec->sequence_step > 1 && ($why = $this->replySyncProblem())) {
+                $out['not_sent'][] = "#{$rec->id}: follow-up held, {$why}"; // stays approved; goes out once replies are read again
+                continue;
+            }
             if ($rec->sequence_step === 1 && $firstToday >= $cap) {
                 $out['not_sent'][] = "#{$rec->id}: daily first-touch cap ({$cap}) reached";
                 continue;
@@ -309,6 +313,27 @@ class SequenceEngine
      * usable address (the founder gets the conversation, not info@); a first email to a second person waits until
      * `company_gap_days` after the company's last email (rescheduled, never dropped). Null = may send now.
      */
+    /**
+     * Why follow-ups must wait, or null when they may go. A follow-up is only safe while replies are being read:
+     * otherwise someone who already answered (or asked us to stop) keeps getting e-mails.
+     */
+    public function replySyncProblem(): ?string
+    {
+        if (!app(\App\Services\Mail\ReplySyncService::class)->isConfigured()) {
+            return 'reply sync (IMAP) is not set up, so replies are not read';
+        }
+        if ($this->workflows->isPaused('reply_sync') || !$this->policy->isAutomatic('reply.classify')) {
+            return 'reply sync is paused';
+        }
+        $maxAge = (int) config('leadpilot.autopilot.reply_sync_max_age_minutes', 180);
+        $last = \App\Models\ProviderHealth::where('provider', 'imap')->value('last_success_at');
+        if (!$last || \Illuminate\Support\Carbon::parse($last)->lt(now()->subMinutes($maxAge))) {
+            return 'replies have not been read for over ' . intdiv($maxAge, 60) . ' hours (last: ' . ($last ? \Illuminate\Support\Carbon::parse($last)->diffForHumans() : 'never') . ')';
+        }
+
+        return null;
+    }
+
     public function companyConflict(CampaignRecipient $rec): ?string
     {
         $lead = $rec->lead;

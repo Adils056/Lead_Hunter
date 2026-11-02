@@ -29,7 +29,10 @@ class PerformanceReport
         $positiveLeadIds = $replies->filter(fn ($r) => in_array($r->category ?? $r->classification, self::POSITIVE, true))->pluck('lead_id')->unique();
         $sentLeadIds = CampaignRecipient::whereNotNull('sent_at')->where('sent_at', '>=', $from)->pluck('lead_id')->unique();
         $meetingLeadIds = DB::table('meetings')->where('created_at', '>=', $from)->pluck('lead_id')->unique();
-        $wonLeadIds = Deal::whereNotNull('closed_at')->where('stage', 'won')->where('closed_at', '>=', $from)->pluck('lead_id')->filter()->unique();
+        // won = a won deal or a lead marked won in the CRM (same rule as leadpilot:sales-report); older deals have no closed_at
+        $wonLeadIds = Deal::whereIn('stage', ['won', 'closed_won'])->whereNotNull('lead_id')
+            ->where(fn ($q) => $q->where('closed_at', '>=', $from)->orWhere(fn ($w) => $w->whereNull('closed_at')->where('updated_at', '>=', $from)))
+            ->pluck('lead_id')->merge(Lead::where('lifecycle_stage', 'won')->where('updated_at', '>=', $from)->pluck('id'))->unique();
 
         $groups = [
             'source' => fn ($l) => $l->company?->source_provider ?? $l->source_name ?? 'unknown',
