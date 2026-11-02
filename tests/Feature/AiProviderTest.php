@@ -131,4 +131,24 @@ class AiProviderTest extends TestCase
         $this->assertSame(['Ready', 'Turned off', 'Needs key'], [
             $key('openai/gpt-oss-120b')->state() === 'ready' ? 'Ready' : 'x', $key('gpt-oss-120b')->state() === 'off' ? 'Turned off' : 'x', $key('mistral-small-2603')->state() === 'no_key' ? 'Needs key' : 'x']);
     }
+
+    public function test_groq_incomplete_json_is_retried_without_strict_mode_and_does_not_park_the_model(): void
+    {
+        $groq = AiProvider::create(['priority' => 10, 'name' => 'Groq', 'kind' => 'openai', 'base_url' => 'https://api.groq.com/openai/v1', 'model' => 'openai/gpt-oss-120b', 'api_key' => 'k', 'daily_limit' => 1000, 'is_active' => true]);
+        Http::fakeSequence('api.groq.com/*')
+            ->push(['error' => ['message' => 'Failed to generate JSON. Please adjust your prompt.', 'type' => 'invalid_request_error', 'code' => 'json_validate_failed']], 400)
+            ->push(['choices' => [['message' => ['content' => "Here you go:\n{\"subject\": \"Hi\"}"]]]], 200)
+            ->push(['error' => ['code' => 'json_validate_failed']], 400)
+            ->push(['error' => ['code' => 'json_validate_failed']], 400);
+
+        $r = app(AiProviderChain::class)->json('sys', 'user', ['type' => 'object'], 400);
+
+        $this->assertSame(['subject' => 'Hi'], $r['data']);
+        $this->assertSame('ready', $groq->fresh()->state());
+        Http::assertSent(fn ($req) => !isset($req->data()['response_format']) && $req->data()['max_tokens'] === 1200);
+
+        // both attempts fail: the model is skipped for this call only, not parked for an hour like a bad key
+        $this->assertNull(app(AiProviderChain::class)->json('sys', 'user', ['type' => 'object']));
+        $this->assertSame('ready', $groq->fresh()->state(), 'still available for the next call');
+    }
 }

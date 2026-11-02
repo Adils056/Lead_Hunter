@@ -56,7 +56,14 @@ class AiProviderChain
             return $data;
         } catch (\Throwable $e) {
             $code = (int) $e->getCode();
-            $hard = in_array($code, [400, 401, 403, 404], true); // bad key, unknown model: will not fix itself in minutes
+            if (str_contains($e->getMessage(), 'json_validate_failed')) {
+                // one answer came out broken: try the next model for this call, keep this one available
+                $p->forceFill(['last_status' => 'bad_answer', 'last_error' => mb_substr($e->getMessage(), 0, 300)])->save();
+
+                return null;
+            }
+            // bad key, unknown model: will not fix itself in minutes. A 400 about one answer's JSON is not the key's fault.
+            $hard = in_array($code, [400, 401, 403, 404], true) && !str_contains($e->getMessage(), 'json_validate_failed');
             $p->forceFill(['last_status' => $hard ? 'error' : 'cooling', 'last_error' => mb_substr($e->getMessage(), 0, 300),
                 'cooldown_until' => now()->addMinutes($hard ? 60 : 10)])->save();
 
@@ -67,17 +74,26 @@ class AiProviderChain
     protected function openai(AiProvider $p, string $system, string $user, array $schema, int $maxTokens): string
     {
         $base = rtrim((string) $p->base_url, '/');
-        $res = Http::timeout(45)->withToken((string) $p->api_key)->withHeaders(['HTTP-Referer' => (string) config('app.url'), 'X-Title' => 'LeadPilot'])
-            ->post("{$base}/chat/completions", [
-                'model' => $p->model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $system . "\n\nReply with one JSON object only, no prose, matching this JSON schema:\n" . json_encode($schema)],
-                    ['role' => 'user', 'content' => $user],
-                ],
-                'response_format' => ['type' => 'json_object'],
-                'max_tokens' => max($maxTokens, 300),
-                'temperature' => 0.4,
-            ]);
+        $body = [
+            'model' => $p->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $system . "\n\nReply with one JSON object only, no prose, matching this JSON schema:\n" . json_encode($schema)],
+                ['role' => 'user', 'content' => $user],
+            ],
+            'response_format' => ['type' => 'json_object'],
+            'max_tokens' => max($maxTokens, 300),
+            'temperature' => 0.4,
+        ];
+        $send = fn (array $b) => Http::timeout(45)->withToken((string) $p->api_key)
+            ->withHeaders(['HTTP-Referer' => (string) config('app.url'), 'X-Title' => 'LeadPilot'])->post("{$base}/chat/completions", $b);
+        $res = $send($body);
+        if ($res->status() === 400 && str_contains($res->body(), 'json_validate_failed')) {
+            // Groq rejects its own answer when the model's JSON came out incomplete (reasoning models spend tokens
+            // thinking first): ask once more with more room and without strict JSON mode; the answer is parsed leniently
+            unset($body['response_format']);
+            $body['max_tokens'] = max($maxTokens, 300) * 3;
+            $res = $send($body);
+        }
         if (!$res->successful()) {
             throw new \RuntimeException("{$p->name} HTTP {$res->status()}: " . mb_substr($res->body(), 0, 200), $res->status());
         }
