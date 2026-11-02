@@ -63,7 +63,7 @@ class CompetitorBenchmark
         return Company::where('id', '<>', $company->id)->where('status', '<>', 'archived')->whereNotNull('website')
             ->where('industry_group', $company->industry_group)->where('country', $company->country)
             ->when($company->domain, fn ($q) => $q->where(fn ($w) => $w->whereNull('domain')->orWhere('domain', '<>', $company->domain)))
-            ->with('latestWebsiteAudit')
+            ->with(['latestWebsiteAudit', 'latestCompletedWebsiteAudit'])
             ->orderByRaw('CASE WHEN city = ? THEN 0 ELSE 1 END', [(string) $company->city])
             ->orderByRaw('CASE WHEN website_audited_at IS NULL THEN 1 ELSE 0 END')
             ->orderByDesc('google_review_count')->orderBy('id')
@@ -89,7 +89,7 @@ class CompetitorBenchmark
             } catch (\Throwable) {
                 // an unreachable competitor is simply left out of the comparison
             }
-            $c->load('latestWebsiteAudit');
+            $c->load(['latestWebsiteAudit', 'latestCompletedWebsiteAudit']);
         }
 
         return $done;
@@ -125,9 +125,9 @@ class CompetitorBenchmark
     /** The whole comparison for the report. */
     public function build(Company $company, Collection $competitors): array
     {
-        $own = $this->scores($company->latestWebsiteAudit);
+        $own = $this->scores($company->latestCompletedWebsiteAudit);
         $rows = $competitors->map(fn ($c) => ['id' => $c->id, 'name' => $c->name, 'website' => $c->website, 'city' => $c->city,
-            'reviews' => $c->google_review_count, 'rating' => $c->google_rating, 'scores' => $this->scores($c->latestWebsiteAudit)])
+            'reviews' => $c->google_review_count, 'rating' => $c->google_rating, 'scores' => $this->scores($c->latestCompletedWebsiteAudit)])
             ->filter(fn ($r) => $r['scores'] !== null)->values();
 
         $areas = [];
@@ -151,12 +151,12 @@ class CompetitorBenchmark
 
         // what competitors already have that this business lacks
         $gaps = [];
-        $ownChecks = collect((array) $company->latestWebsiteAudit?->checks)->keyBy('key');
+        $ownChecks = collect((array) $company->latestCompletedWebsiteAudit?->checks)->keyBy('key');
         foreach ($ownChecks as $k => $chk) {
             if (!in_array($chk['status'] ?? '', ['fail', 'warn'], true)) {
                 continue;
             }
-            $have = $competitors->filter(fn ($c) => (collect((array) $c->latestWebsiteAudit?->checks)->firstWhere('key', $k)['status'] ?? null) === 'pass')->count();
+            $have = $competitors->filter(fn ($c) => (collect((array) $c->latestCompletedWebsiteAudit?->checks)->firstWhere('key', $k)['status'] ?? null) === 'pass')->count();
             $gaps[] = ['key' => $k, 'label' => $chk['label'] ?? $k, 'status' => $chk['status'], 'evidence' => $chk['evidence'] ?? '',
                 'fix' => WebsiteAuditService::FIXES[$k] ?? null, 'competitors_with_it' => $have, 'competitors' => $rows->count()];
         }
@@ -167,7 +167,17 @@ class CompetitorBenchmark
             $rank = 1 + $rows->filter(fn ($r) => ($r['scores']['overall'] ?? -1) > $own['overall'])->count();
         }
 
-        return ['own' => $own, 'areas' => $areas, 'competitors' => $rows->all(), 'leads_in' => $lead, 'behind_in' => $behind,
+        // QA 2 Nov: a failed re-audit (site down for a moment) used to blank every score without saying why
+        $used = $company->latestCompletedWebsiteAudit;
+        $last = $company->latestWebsiteAudit;
+        $note = match (true) {
+            !$company->website => 'This business has no website on file, so only its competitors are scored.',
+            !$used => 'The website could not be checked' . ($last?->audited_at ? ' (last try ' . $last->audited_at->format('j M Y') . ')' : '') . ', so it has no scores yet. Re-run the website audit, then rebuild.',
+            $last && $last->id !== $used->id && $last->status !== 'completed' => 'The latest check on ' . $last->audited_at?->format('j M Y') . ' could not reach the website; scores use the audit from ' . $used->audited_at?->format('j M Y') . '.',
+            default => null,
+        };
+
+        return ['own' => $own, 'note' => $note, 'audited_on' => $used?->audited_at?->toDateString(), 'areas' => $areas, 'competitors' => $rows->all(), 'leads_in' => $lead, 'behind_in' => $behind,
             'gaps' => $gaps, 'rank' => $rank, 'field' => $rows->count() + 1];
     }
 
@@ -178,7 +188,7 @@ class CompetitorBenchmark
         foreach (self::NEEDS[$company->industry_group] ?? [] as [$name, $why, $service]) {
             $out[] = ['solution' => $name, 'why' => $why, 'service' => $service, 'source' => 'industry'];
         }
-        foreach (array_slice((array) $company->latestWebsiteAudit?->opportunities, 0, 3) as $o) {
+        foreach (array_slice((array) $company->latestCompletedWebsiteAudit?->opportunities, 0, 3) as $o) {
             $out[] = ['solution' => $o['label'] ?? $o['service'], 'why' => implode(' ', array_slice((array) ($o['evidence'] ?? []), 0, 2)),
                 'service' => $o['service'] ?? null, 'source' => 'audit'];
         }

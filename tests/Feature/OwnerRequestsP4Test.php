@@ -56,6 +56,28 @@ class OwnerRequestsP4Test extends TestCase
         $this->assertContains('Online appointment booking with WhatsApp/SMS reminders', array_column($bench->solutions($me), 'solution'));
     }
 
+    public function test_a_failed_re_audit_does_not_blank_the_report_and_the_report_says_why(): void
+    {
+        // QA 2 Nov: re-running the audit while the site was down left a failed audit on top, and the report showed "You –" everywhere
+        $me = $this->clinic('Smile Dental', 'Lahore', ['viewport' => 'fail', 'cta' => 'fail', 'https' => 'pass', 'title' => 'pass']);
+        $near = $this->clinic('Bright Teeth', 'Lahore', ['viewport' => 'pass', 'cta' => 'pass', 'https' => 'pass', 'title' => 'pass']);
+        WebsiteAudit::create(['company_id' => $me->id, 'url' => $me->website, 'status' => 'failed', 'checks' => [], 'audited_at' => now()]);
+        WebsiteAudit::create(['company_id' => $near->id, 'url' => $near->website, 'status' => 'failed', 'checks' => [], 'audited_at' => now()]);
+
+        $bench = app(CompetitorBenchmark::class);
+        $me = $me->fresh();
+        $b = $bench->build($me, $bench->competitors($me));
+
+        $this->assertSame(0, $b['areas']['mobile_speed']['you'], 'scores come from the last audit that reached the site');
+        $this->assertSame(100, $b['areas']['mobile_speed']['average'], 'a competitor\'s failed re-check does not drop it either');
+        $this->assertStringContainsString('could not reach the website; scores use the audit from', $b['note']);
+        $this->assertSame('fail', collect($b['gaps'])->firstWhere('key', 'viewport')['status']);
+
+        $nothing = Company::create(['name' => 'Down Dental', 'website' => 'https://down.example', 'industry' => 'Dental clinic', 'country' => 'Pakistan', 'city' => 'Lahore']);
+        WebsiteAudit::create(['company_id' => $nothing->id, 'url' => $nothing->website, 'status' => 'failed', 'checks' => [], 'audited_at' => now()]);
+        $this->assertStringContainsString('could not be checked', $bench->build($nothing->fresh(), collect())['note']);
+    }
+
     public function test_report_with_ai_analysis_is_shown_and_downloads_as_a_pdf(): void
     {
         $me = $this->clinic('Smile Dental', 'Lahore', ['viewport' => 'fail', 'cta' => 'fail', 'https' => 'pass', 'title' => 'pass']);

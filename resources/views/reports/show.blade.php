@@ -27,6 +27,7 @@
     <div class="col-lg-7"><div class="card-lp p-3 h-100">
         <h6 class="fw-bold mb-1">How the website compares</h6>
         <p class="small text-muted mb-3">Scores from audit checks actually run (0-100). Compared with {{ count($b['competitors']) }} local {{ $company->industry_group ?: 'similar' }} business(es).@if($b['rank']) Overall position: <strong>{{ $b['rank'] }} of {{ $b['field'] }}</strong>.@endif</p>
+        @if(!empty($b['note']))<div class="alert alert-warning small py-2 mb-3"><i class="bi bi-exclamation-triangle me-1"></i>{{ $b['note'] }}</div>@endif
         @foreach($b['areas'] as $key => $a)
             <div class="mb-3">
                 <div class="d-flex justify-content-between small"><span class="fw-semibold">{{ $a['label'] }}</span>

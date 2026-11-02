@@ -52,9 +52,9 @@ class WebsiteReportController extends Controller
 
     protected function data(Company $company, $report): array
     {
-        $company->load('latestWebsiteAudit');
+        $company->load('latestCompletedWebsiteAudit');
 
-        return ['company' => $company, 'report' => $report, 'b' => $report->benchmark, 'audit' => $company->latestWebsiteAudit,
+        return ['company' => $company, 'report' => $report, 'b' => $report->benchmark, 'audit' => $company->latestCompletedWebsiteAudit,
             'settings' => \App\Models\OutreachSetting::current(), 'agency' => config('leadpilot.agency')];
     }
 }
