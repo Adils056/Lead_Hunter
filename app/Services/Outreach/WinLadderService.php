@@ -267,6 +267,9 @@ class WinLadderService
         $blockers = [];
         $hard = false;
         foreach ($failed as $key => $reason) {
+            if ($key === 'daily_frequency_limit') {
+                continue; // today's send quota is full: the lead is still ready, it goes out on the next sending day
+            }
             if ($key === 'contact_identity') {
                 $blockers[] = $lead->contact_status === 'generic_inbox'
                     ? 'Only a shared inbox (info@ / contact@) is known — send manually after review, or find the owner'

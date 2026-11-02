@@ -50,6 +50,20 @@ class WinLadderTest extends TestCase
             'lifecycle_stage' => 'qualified', 'score_explanation' => 'audit evidence'], $over));
     }
 
+    public function test_a_full_daily_quota_does_not_push_a_ready_lead_off_rung_a(): void
+    {
+        $ready = $this->lead($this->clinic('Quota Dental', 80));
+        OutreachSetting::current()->update(['max_daily_sends' => 1]);
+        $campaign = Campaign::create(['name' => 'AP', 'service_offered' => 'web_redesign', 'status' => 'running', 'created_by' => $this->admin->id, 'is_autopilot' => true]);
+        $other = $this->lead($this->clinic('Sent Today'), ['email' => 'owner@senttoday.test']);
+        CampaignRecipient::create(['campaign_id' => $campaign->id, 'lead_id' => $other->id, 'status' => 'sent', 'sent_at' => now(), 'sequence_step' => 1, 'idempotency_key' => 'q1']);
+        \App\Models\EmailLog::create(['lead_id' => $other->id, 'sender_email' => 'ismail@eziline.test', 'recipient_email' => $other->email, 'direction' => 'outbound', 'subject' => 'Hi', 'occurred_at' => now()]); // what the gate counts
+
+        $rung = app(WinLadderService::class)->evaluate($ready->fresh());
+
+        $this->assertSame('A', $rung['tier'], 'today\'s quota clears tomorrow: ' . json_encode($rung['blockers']));
+    }
+
     public function test_rungs_are_decided_top_down_and_ranked_by_evidence(): void
     {
         $ladder = app(WinLadderService::class);
