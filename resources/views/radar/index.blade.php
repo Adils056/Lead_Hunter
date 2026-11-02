@@ -12,8 +12,8 @@
 <div class="row g-2 mb-3">
     @foreach($lv as $k => [$label, $cls, $icon])
         <div class="col-4"><a href="{{ route('radar.index', array_merge(array_filter($f), ['level' => $f['level'] === $k ? null : $k])) }}" class="text-decoration-none">
-            <div class="card-lp p-3 {{ $f['level'] === $k ? 'border border-2 border-dark' : '' }}">
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-1"><span class="badge {{ $cls }}"><i class="bi {{ $icon }} me-1"></i>{{ $label }}</span><span class="fs-4 fw-bold text-dark lh-1">{{ $counts[$k] ?? 0 }}</span></div>
+            <div class="card-lp p-2 p-sm-3 {{ $f['level'] === $k ? 'border border-2 border-dark' : '' }}">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-1"><span class="badge {{ $cls }} mw-100 text-truncate"><i class="bi {{ $icon }} me-1 d-none d-sm-inline"></i>{{ $label }}</span><span class="fs-4 fw-bold text-dark lh-1">{{ $counts[$k] ?? 0 }}</span></div>
             </div></a></div>
     @endforeach
 </div>
@@ -22,10 +22,10 @@
     <form method="GET" action="{{ route('radar.index') }}" class="row g-2 align-items-center">
         @if($f['level'])<input type="hidden" name="level" value="{{ $f['level'] }}">@endif
         <div class="col-md-3"><input type="search" name="q" value="{{ $f['q'] }}" class="form-control form-control-sm" placeholder="Search posts…" aria-label="Search"></div>
-        <div class="col-6 col-md-2"><select name="platform" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Platform"><option value="">All platforms</option>@foreach($platforms as $p)<option value="{{ $p }}" @selected($f['platform'] === $p)>{{ $p }}</option>@endforeach</select></div>
-        <div class="col-6 col-md-2"><select name="country" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Country"><option value="">All countries</option>@foreach($countries as $c)<option value="{{ $c }}" @selected($f['country'] === $c)>{{ $c }}</option>@endforeach</select></div>
-        <div class="col-6 col-md-2"><select name="category" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Business category"><option value="">All categories</option>@foreach($categories as $c)<option value="{{ $c }}" @selected($f['category'] === $c)>{{ $c }}</option>@endforeach</select></div>
-        <div class="col-6 col-md-2"><select name="service" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Service"><option value="">All services</option>@foreach($services as $k => $label)<option value="{{ $k }}" @selected($f['service'] === $k)>{{ $label }}</option>@endforeach</select></div>
+        <div class="col-6 col-md-2"><select name="platform" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Platform"><option value="">Platform</option>@foreach($platforms as $p)<option value="{{ $p }}" @selected($f['platform'] === $p)>{{ $p }}</option>@endforeach</select></div>
+        <div class="col-6 col-md-2"><select name="country" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Country"><option value="">Country</option>@foreach($countries as $c)<option value="{{ $c }}" @selected($f['country'] === $c)>{{ $c }}</option>@endforeach</select></div>
+        <div class="col-6 col-md-2"><select name="category" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Business category"><option value="">Category</option>@foreach($categories as $c)<option value="{{ $c }}" @selected($f['category'] === $c)>{{ $c }}</option>@endforeach</select></div>
+        <div class="col-6 col-md-2"><select name="service" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Service"><option value="">Service</option>@foreach($services as $k => $label)<option value="{{ $k }}" @selected($f['service'] === $k)>{{ $label }}</option>@endforeach</select></div>
         <div class="col-md-1"><select name="status" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Status">@foreach(['new' => 'New', 'contacted' => 'Contacted', 'dismissed' => 'Dismissed', 'all' => 'All'] as $k => $label)<option value="{{ $k }}" @selected($f['status'] === $k)>{{ $label }}</option>@endforeach</select></div>
     </form>
 </div>
