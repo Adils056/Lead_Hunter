@@ -70,6 +70,13 @@ class EligibilityGateService
             $result->pass('outreach_mode', "Outreach mode is active ({$settings->mode}).");
         }
 
+        // 1b. Conversation stage: someone who replied, is talking to sales, or is closed gets answers, not cold e-mail
+        if (in_array($lead->lifecycle_stage, Lead::NO_COLD_EMAIL_STAGES, true)) {
+            $result->fail('lifecycle_stage', 'Lead is at stage "' . str_replace('_', ' ', $lead->lifecycle_stage) . '": cold e-mail stops here; answer through the Sales Assistant.', (string) $lead->lifecycle_stage);
+        } else {
+            $result->pass('lifecycle_stage', 'Not in a conversation or closed.');
+        }
+
         // 2. Score Threshold Check
         $minScore = $campaign ? ($campaign->min_lead_score ?: $settings->min_lead_score) : $settings->min_lead_score;
         if (($lead->overall_score ?? 0) < $minScore) {

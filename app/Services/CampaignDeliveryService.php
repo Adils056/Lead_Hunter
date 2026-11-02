@@ -50,6 +50,9 @@ class CampaignDeliveryService
         // Must have an email address
         $query->whereNotNull('email')->where('email', '!=', '');
 
+        // Never cold-email someone already in a conversation, a client, or a closed lead
+        $query->where(fn ($q) => $q->whereNull('lifecycle_stage')->orWhereNotIn('lifecycle_stage', Lead::NO_COLD_EMAIL_STAGES));
+
         // Respect contact rules
         if ($campaign->contact_rules['require_verified_email'] ?? true) {
             $query->whereIn('email_verification_status', EmailStatus::sendableStatuses());
@@ -128,8 +131,10 @@ class CampaignDeliveryService
             $lead = $locked->lead;
 
             // Status check
+            // Temporary holds (paused, stopped, dry-run, pilot mode) keep approved work approved: it goes out once the hold is
+            // lifted. Marking it "skipped" used to throw it away for good.
             if ($campaign->emergency_stopped || $campaign->status === 'paused') {
-                $locked->update(['status' => 'skipped', 'error_message' => 'Campaign is emergency stopped or paused.']);
+                $locked->update(['error_message' => 'Held: campaign is emergency stopped or paused.']);
                 return false;
             }
 
@@ -139,7 +144,7 @@ class CampaignDeliveryService
             // Phase 0 hotfix: the global guard applies to MANUAL dispatch too (it used to apply to autopilot only, so an
             // admin click in DRY-RUN or during an emergency stop still sent a real e-mail).
             if ($lead && ($why = \App\Services\Outreach\OutreachGuard::blockReason('outreach', null, $lead->email))) {
-                $locked->update(['status' => 'skipped', 'error_message' => 'Blocked: ' . $why]);
+                $locked->update(['error_message' => 'Held: ' . $why]);
 
                 return false;
             }
@@ -179,9 +184,7 @@ class CampaignDeliveryService
                     'error_message' => "Eligibility Gate Rejected: " . $eligibility->primaryReason,
                 ]);
 
-                if ($eligibility->recommendedLifecycleStage !== $lead->lifecycle_stage) {
-                    $lead->update(['lifecycle_stage' => $eligibility->recommendedLifecycleStage]);
-                }
+                $lead->moveStage($eligibility->recommendedLifecycleStage); // never pulls a lead back (e.g. won → ready_for_review)
 
                 return false;
             }

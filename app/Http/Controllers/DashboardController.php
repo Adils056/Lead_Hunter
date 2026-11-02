@@ -79,19 +79,35 @@ class DashboardController extends Controller
         $repliesReceived = $m['replied'];
         $positiveReplies = $m['positive'];
 
-        // CRM Metrics
-        $meetingsBooked = Meeting::count();
-        $proposalsSent = Deal::whereIn('stage', ['proposal_sent', 'negotiation', 'won'])->count();
-        $dealsWon = Deal::where('stage', 'won')->count();
-        $totalDealValue = Deal::where('stage', 'won')->sum('value');
-        $pipelineValue = Deal::whereIn('stage', ['discovery', 'proposal_sent', 'negotiation'])->sum('value');
+        // CRM Metrics: the same period and country / service filters as everything else on the page
+        $since = $dateRange !== 'all' ? now()->subDays((int) $dateRange) : null;
+        $prospect = ($country || $service) ? function ($q) use ($country, $service) {
+            if ($country) {
+                $q->where('country', $country);
+            }
+            if ($service) {
+                $q->whereJsonContains('relevant_services', $service);
+            }
+        } : null;
+        $meetings = Meeting::where('status', '<>', 'cancelled')->when($since, fn ($q) => $q->where('created_at', '>=', $since))
+            ->when($prospect, fn ($q) => $q->whereHas('lead', $prospect));
+        $deals = fn () => Deal::query()->when($prospect, fn ($q) => $q->whereHas('lead', $prospect));
+        $closedSince = fn ($q) => $q->when($since, fn ($q) => $q->where(fn ($w) => $w->where('closed_at', '>=', $since)
+            ->orWhere(fn ($o) => $o->whereNull('closed_at')->where('updated_at', '>=', $since))));
+        $meetingsBooked = (clone $meetings)->count();
+        $proposalsSent = $deals()->whereIn('stage', ['proposal_sent', 'negotiation', 'won'])->when($since, fn ($q) => $q->where('updated_at', '>=', $since))->count();
+        $dealsWon = $closedSince($deals()->whereIn('stage', ['won', 'closed_won']))->count();
+        $totalDealValue = $closedSince($deals()->whereIn('stage', ['won', 'closed_won']))->sum('value');
+        $pipelineValue = $deals()->whereIn('stage', ['discovery', 'proposal_sent', 'negotiation'])->sum('value'); // open now
 
         // Rates (with safe division-by-zero handling)
         $deliveryRate = $m['delivery_rate'];
         $bounceRate = $m['bounce_rate'];
         $replyRate = $m['reply_rate'];
         $positiveReplyRate = $m['positive_rate'];
-        $leadToMeetingRate = $totalContacts > 0 ? round(($meetingsBooked / $totalContacts) * 100, 1) : 0;
+        // of the leads shown (this period and filter), the share that got a meeting: one lead counts once, so never over 100%
+        $leadsWithMeeting = Meeting::where('status', '<>', 'cancelled')->whereIn('lead_id', (clone $leadQuery)->select('id'))->distinct()->count('lead_id');
+        $leadToMeetingRate = $totalContacts > 0 ? round(($leadsWithMeeting / $totalContacts) * 100, 1) : 0;
 
         // Cost per qualified lead (Total usage cost / qualified leads)
         $totalSpend = UsageLog::sum('cost_estimated');

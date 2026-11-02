@@ -117,6 +117,36 @@ class Lead extends Model
         return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
+    /** Stages where a prospect is in a conversation or closed: cold e-mail (campaigns, sequences) must not reach them. */
+    public const NO_COLD_EMAIL_STAGES = ['replied', 'interested', 'meeting_booked', 'proposal_sent', 'negotiation', 'won', 'lost', 'not_a_fit', 'opted_out'];
+
+    /** Forward order of the sales stages; the closing stages (lost, not_a_fit, opted_out) are handled separately. */
+    protected const STAGE_RANK = ['new' => 0, 'researching' => 1, 'qualified' => 2, 'nurture' => 2, 'ready_for_review' => 3, 'approved' => 3,
+        'contacted' => 4, 'replied' => 5, 'interested' => 6, 'meeting_booked' => 7, 'proposal_sent' => 8, 'negotiation' => 9, 'won' => 10];
+
+    /**
+     * Move the lead to a stage only when that is progress: a reply or a rejected send must never pull a client back
+     * (e.g. won → replied, or proposal_sent → ready_for_review). Closing as lost / not a fit / opted out always
+     * applies, except to a won client. Returns whether the stage changed.
+     */
+    public function moveStage(string $to): bool
+    {
+        $from = (string) ($this->lifecycle_stage ?: 'new');
+        if ($to === $from || $from === 'won') {
+            return false;
+        }
+        $closing = in_array($to, ['lost', 'not_a_fit', 'opted_out'], true);
+        if (!$closing && isset(self::STAGE_RANK[$to], self::STAGE_RANK[$from]) && self::STAGE_RANK[$to] < self::STAGE_RANK[$from]) {
+            return false;
+        }
+        if (!$closing && in_array($from, ['lost', 'not_a_fit', 'opted_out'], true) && (self::STAGE_RANK[$to] ?? 0) < self::STAGE_RANK['replied']) {
+            return false; // a closed lead re-opens only through a real reply, not through a send attempt
+        }
+        $this->update(['lifecycle_stage' => $to]);
+
+        return true;
+    }
+
     public function scores(): HasMany
     {
         return $this->hasMany(LeadScore::class);
