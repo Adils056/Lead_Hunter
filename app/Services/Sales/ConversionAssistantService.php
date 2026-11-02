@@ -139,9 +139,14 @@ class ConversionAssistantService
 
         $name = \App\Support\CompanyName::forEmail($c->name);
         $site = $c->domain ?: ($c->website ? preg_replace('/^www\./', '', (string) parse_url($c->website, PHP_URL_HOST)) : null);
-        $greeting = ($lead->contact_status === 'identified' && $lead->first_name) ? "Hi {$lead->first_name}," : ($name ? "Hi {$name} team," : 'Hi there,');
+        $attention = $lead->contact_status === 'generic_inbox' ? $lead->attentionGreetingName() : null;
+        $greeting = ($lead->contact_status === 'identified' && $lead->first_name) ? "Hi {$lead->first_name},"
+            : ($attention ? "Hi {$attention}," : ($name ? "Hi {$name} team," : 'Hi there,'));
         $f1 = $facts[0]['text'];
         $subject = $this->subjectFor($facts[0], $name ?? $site ?? 'your business');
+        if ($attention) {
+            $subject = 'For ' . $lead->attention_name . ': ' . $subject; // whoever reads info@ knows whom to pass it to
+        }
         // short and factual: one verified observation, one offer, one clear next step (Outreach Engine → Call to action)
         $settings = \App\Models\OutreachSetting::current();
         $cta = $settings->ctaLine($facts[0]['source'] === 'website_audit');
@@ -154,6 +159,17 @@ class ConversionAssistantService
             if ($ai) {
                 $draft = $ai + ['generator' => $ai['ai_provider'] ?? 'ai'];
             }
+        }
+
+        // Value first: the free website & competitor report, when one exists, goes in as a link (after any AI polish,
+        // so it is never rewritten or dropped). Opening it tells the salesperson the prospect is paying attention.
+        if ($line = $this->reportLine($lead)) {
+            $sig = $settings->signature();
+            $at = $sig !== '' ? strrpos($draft['body'], $sig) : false; // just above the signature, else at the end
+            $draft['body'] = $at !== false
+                ? substr($draft['body'], 0, $at) . $line . "\n\n" . substr($draft['body'], $at)
+                : rtrim($draft['body']) . "\n\n" . $line;
+            $draft['report_link'] = true;
         }
 
         $draft['word_count'] = $this->words($draft['body'], true);
@@ -179,6 +195,19 @@ class ConversionAssistantService
      *
      * @return array{fact: array, offer: array}|null
      */
+    /** One sentence with the private report link, or null when there is no report worth showing (or no public URL). */
+    public function reportLine(Lead $lead): ?string
+    {
+        $report = $lead->company?->latestWebsiteReport;
+        if (!$report || !$report->isShareable() || \App\Models\OutreachSetting::publicUrlIsLocal()) {
+            return null;
+        }
+        $n = $report->competitorCount();
+        $place = $lead->company->city ? "in {$lead->company->city}" : 'nearby';
+
+        return "I also put together a free one-page report comparing your website with {$n} similar " . ($n === 1 ? 'business' : 'businesses') . " {$place}: " . $report->shareUrl();
+    }
+
     public function matchFactAndOffer(Lead $lead, array $facts): ?array
     {
         $approved = (array) \App\Models\OutreachSetting::current()->approved_services;

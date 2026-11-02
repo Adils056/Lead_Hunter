@@ -17,7 +17,7 @@ class WebsiteReportService
     {
     }
 
-    public function generate(Company $company, ?int $userId = null, int $auditSeconds = 25): WebsiteReport
+    public function generate(Company $company, ?int $userId = null, int $auditSeconds = 25, bool $withAi = true): WebsiteReport
     {
         @set_time_limit(120);
         $own = $company->latestWebsiteAudit;
@@ -32,10 +32,15 @@ class WebsiteReportService
         $this->bench->auditMissing($competitors, $auditSeconds);
         $benchmark = $this->bench->build($company, $competitors);
         $solutions = $this->bench->solutions($company);
-        [$ai, $provider] = $this->analyse($company, $benchmark, $solutions);
+        [$ai, $provider] = $withAi ? $this->analyse($company, $benchmark, $solutions) : [null, null];
+
+        // A link already sent to the prospect keeps working and shows the newest report (with its view history)
+        $previous = WebsiteReport::where('company_id', $company->id)->whereNotNull('share_token')->latest('id')->first();
+        $share = $previous ? $previous->only(['share_token', 'view_count', 'first_viewed_at', 'last_viewed_at']) : [];
+        $previous?->forceFill(['share_token' => null])->save();
 
         return WebsiteReport::create(['company_id' => $company->id, 'benchmark' => $benchmark, 'solutions' => $solutions, 'ai' => $ai,
-            'ai_provider' => $provider, 'created_by' => $userId]);
+            'ai_provider' => $provider, 'created_by' => $userId] + $share);
     }
 
     /** @return array{0: ?array, 1: ?string} */

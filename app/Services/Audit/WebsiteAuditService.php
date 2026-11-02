@@ -949,6 +949,7 @@ class WebsiteAuditService
         ]), 'website_crawl', $best['source_url'] ?? $audit->final_url, 'crawl', 90);
 
         $this->addNamedContact($company, $audit);
+        self::addressSharedInbox($company, (array) ($audit->contacts_found['people'] ?? []));
 
         // Give contact-less leads the PUBLIC business inbox printed on the site (never a guessed address).
         if ($best) {
@@ -972,6 +973,23 @@ class WebsiteAuditService
         $person = collect($audit->contacts_found['people'] ?? [])->first(fn ($p) => !empty($p['email']));
 
         return $person ? self::namedContact($company, $person, $person['email'], 'Company website (team / about page)', 'crawl') : null;
+    }
+
+    /**
+     * When the site names a decision-maker (owner, founder, director...) but the only address is the shared inbox,
+     * the info@ lead is addressed to that person ("For Dr Sarah Khan"). The person's own address is never guessed.
+     * Returns how many leads were addressed.
+     */
+    public static function addressSharedInbox(Company $company, array $people): int
+    {
+        $top = collect($people)->filter(fn ($p) => ($p['rank'] ?? 0) >= 70 && !empty($p['name']))->sortByDesc('rank')->first();
+        if (!$top) {
+            return 0;
+        }
+
+        return Lead::where('company_id', $company->id)->where('contact_status', 'generic_inbox')->whereNull('attention_name')->get()
+            ->each(fn (Lead $l) => $l->update(['attention_name' => mb_substr($top['name'], 0, 120), 'attention_role' => mb_substr((string) ($top['role'] ?? ''), 0, 80) ?: null]))
+            ->count();
     }
 
     /** One named decision-maker contact (unverified until the SMTP check runs), unless that address is already a lead. */

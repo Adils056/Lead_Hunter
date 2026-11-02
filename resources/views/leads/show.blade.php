@@ -27,6 +27,9 @@
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3 text-muted small mt-1">
                 <span><i class="bi bi-briefcase me-1"></i>{{ $lead->job_title ?: 'Role unknown' }}</span>
+                @if($lead->contact_status === 'generic_inbox' && $lead->attention_name)
+                    <span title="Named on the company's website; e-mails to this inbox are addressed to them"><i class="bi bi-person-check me-1"></i>Attention: {{ $lead->attention_name }}@if($lead->attention_role) ({{ $lead->attention_role }})@endif</span>
+                @endif
                 @if($lead->company)
                     <span><i class="bi bi-building me-1"></i><a href="{{ route('companies.show', $lead->company) }}" class="text-decoration-none">{{ $lead->company->name }}</a></span>
                 @endif

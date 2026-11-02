@@ -50,7 +50,7 @@ class WebsiteReportController extends Controller
         return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'attachment; filename="' . $name . '"']);
     }
 
-    protected function data(Company $company, $report): array
+    public function data(Company $company, $report): array
     {
         $company->load('latestCompletedWebsiteAudit');
 

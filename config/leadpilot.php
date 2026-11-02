@@ -304,6 +304,17 @@ return [
         'spend.over_budget' => 'prohibited',
     ],
 
+    // Instant alerts when a prospect replies or opens their report: WhatsApp/SMS via Twilio to each user's phone
+    // (Profile → phone, international format like +923001234567) and/or a webhook (Make, Zapier, n8n, Slack...).
+    'alerts' => [
+        'webhook_url' => env('LEADPILOT_ALERT_WEBHOOK_URL'),
+        'twilio' => [
+            'sid' => env('TWILIO_SID'),
+            'token' => env('TWILIO_TOKEN'),
+            'from' => env('TWILIO_FROM'), // "whatsapp:+14155238886" for WhatsApp, "+1…" for SMS
+        ],
+    ],
+
     'approvals' => [
         'due_hours' => ['critical' => 2, 'high' => 8, 'normal' => 24, 'low' => 72],
         // Escalation chain by level (role names). Level 0 = assigned user/role.
