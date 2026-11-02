@@ -158,6 +158,12 @@ class Company extends Model
         return $this->hasOne(WebsiteAudit::class)->latestOfMany('audited_at');
     }
 
+    /** The latest audit that actually reached the website (a later failed attempt does not wipe its findings). */
+    public function latestCompletedWebsiteAudit(): HasOne
+    {
+        return $this->hasOne(WebsiteAudit::class)->ofMany(['audited_at' => 'max', 'id' => 'max'], fn ($q) => $q->where('status', 'completed'));
+    }
+
     public function provenance(): MorphMany
     {
         return $this->morphMany(DataProvenance::class, 'subject');

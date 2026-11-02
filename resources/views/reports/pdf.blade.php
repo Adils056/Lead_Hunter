@@ -36,6 +36,7 @@
 <div class="box"><strong>Summary.</strong> {{ $ai['summary'] }} @if($ai['competitor_insight'] ?? null)<br>{{ $ai['competitor_insight'] }}@endif</div>
 @else
 <div class="box"><strong>Summary.</strong> We checked {{ $company->website }} with {{ count($audit?->checks ?? []) }} automated tests and compared it with {{ count($b['competitors']) }} local {{ strtolower($company->industry_group ?: 'similar') }} business(es).@if($b['rank']) Overall it ranks {{ $b['rank'] }} of {{ $b['field'] }}.@endif</div>
+@if(!empty($b['note']))<div class="box"><strong>Note.</strong> {{ $b['note'] }}</div>@endif
 @endif
 
 <h2>How your website compares with local competitors</h2>

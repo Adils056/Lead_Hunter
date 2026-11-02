@@ -26,7 +26,7 @@ class WebsiteReportService
                 $this->audits->audit($company);
             } catch (\Throwable) {
             }
-            $company->load('latestWebsiteAudit');
+            $company->load(['latestWebsiteAudit', 'latestCompletedWebsiteAudit']);
         }
         $competitors = $this->bench->competitors($company);
         $this->bench->auditMissing($competitors, $auditSeconds);
@@ -41,7 +41,7 @@ class WebsiteReportService
     /** @return array{0: ?array, 1: ?string} */
     public function analyse(Company $company, array $benchmark, array $solutions): array
     {
-        $audit = $company->latestWebsiteAudit;
+        $audit = $company->latestCompletedWebsiteAudit;
         $facts = [
             'business' => $company->name, 'kind_of_business' => $company->industry_group ?: $company->industry, 'city' => $company->city, 'country' => $company->country,
             'website' => $company->website, 'technology' => array_slice((array) $company->tech_stack, 0, 8),
