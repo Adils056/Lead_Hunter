@@ -84,6 +84,11 @@ class AiProviderTest extends TestCase
         $this->assertSame('error', $p->fresh()->state());
         $this->actingAs($this->admin)->get(route('settings.ai-providers'))->assertSee('Error')->assertSee('HTTP 401');
 
+        // 2 Nov live: the owner switched OpenRouter to another free model, but the old model's 404 kept it on "Error"
+        $p->update(['last_status' => 'error', 'last_error' => 'HTTP 404 model unavailable', 'cooldown_until' => now()->addHour()]);
+        $this->actingAs($this->admin)->put(route('settings.ai-providers.update', $p), ['model' => 'mistral-medium-2605', 'priority' => 10, 'daily_limit' => 2000])->assertRedirect();
+        $this->assertSame(['ready', null], [$p->fresh()->state(), $p->fresh()->last_error], 'a new model starts clean');
+
         $this->actingAs($this->admin)->post(route('settings.ai-providers.toggle', $p));
         $this->assertSame('off', $p->fresh()->state());
         $this->actingAs($this->admin)->delete(route('settings.ai-providers.destroy', $p))->assertRedirect();

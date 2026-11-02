@@ -44,6 +44,10 @@ class AiProviderController extends Controller
         $key = $data['api_key'] ?? null;
         unset($data['api_key']);
         $provider->fill($data);
+        if ($provider->isDirty(['model', 'base_url', 'kind'])) {
+            // a new model gets a fresh start: the old model's "unavailable" error and rest do not apply to it
+            $provider->forceFill(['cooldown_until' => null, 'last_status' => null, 'last_error' => null]);
+        }
         if (filled($key)) {
             $provider->api_key = $key;
             $provider->forceFill(['cooldown_until' => null, 'last_status' => null, 'last_error' => null]);
