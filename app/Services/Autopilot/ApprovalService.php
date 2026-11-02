@@ -314,6 +314,12 @@ class ApprovalService
     protected function executeProposal(ApprovalRequest $req): string
     {
         $draft = ProposalDraft::findOrFail($req->subject_id);
+        if ($draft->status === 'sent') {
+            throw new \RuntimeException('Not sent: this proposal was already sent.');
+        }
+        if (!$draft->lead) {
+            throw new \RuntimeException('Not sent: the lead for this proposal was deleted.');
+        }
         $p = (array) $req->payload;
         $draft->update(array_filter(['title' => $p['subject'] ?? null, 'body' => $p['body'] ?? null]) + ['status' => 'approved', 'approved_by' => $req->decided_by]);
         $msgId = app(OutreachMailer::class)->sendToLead($draft->lead, $draft->title, $draft->body);
