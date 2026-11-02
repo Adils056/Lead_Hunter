@@ -241,8 +241,7 @@
                         <tr>
                             <th>Prospect</th>
                             <th>Company</th>
-                            <th>Score</th>
-                            <th>Stage</th>
+                            <th>Score / stage</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -250,7 +249,7 @@
                         @foreach($topLeads as $tl)
                         <tr>
                             <td>
-                                <div class="fw-bold text-dark">{{ $tl->full_name }}</div>
+                                <a href="{{ route('leads.show', $tl) }}" class="fw-bold text-dark text-decoration-none">{{ $tl->full_name }}</a>
                                 <div class="small text-muted">{{ $tl->job_title ?: 'Role unknown' }}</div>
                             </td>
                             <td>
@@ -261,9 +260,7 @@
                                 <span class="badge-lp {{ \App\Support\ScoreBands::badgeClass($tl->overall_score) }}">
                                     {{ $tl->overall_score }} pts
                                 </span>
-                            </td>
-                            <td>
-                                <span class="badge bg-light text-dark border small">{{ ucwords(str_replace('_', ' ', $tl->lifecycle_stage)) }}</span>
+                                <div><span class="badge bg-light text-dark border small mt-1">{{ ucwords(str_replace('_', ' ', $tl->lifecycle_stage)) }}</span></div>
                             </td>
                             <td class="text-end">
                                 <a href="{{ route('leads.show', $tl) }}" class="btn btn-sm btn-light border py-0 px-2"><i class="bi bi-chevron-right"></i></a>

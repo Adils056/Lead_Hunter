@@ -52,7 +52,7 @@
         <thead><tr class="text-muted"><th>Finding</th><th>Competitors who already have it</th><th>How to fix</th></tr></thead>
         <tbody>
         @forelse(array_slice($b['gaps'], 0, 12) as $g)
-            <tr><td><span class="badge {{ $g['status'] === 'fail' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning' }} me-1">{{ $g['status'] }}</span><strong>{{ $g['label'] }}</strong><div class="text-muted">{{ \Illuminate\Support\Str::limit($g['evidence'], 140) }}</div></td>
+            <tr><td><span class="badge {{ $g['status'] === 'fail' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning' }} me-1">{{ $g['status'] === 'fail' ? 'Problem' : 'Improve' }}</span><strong>{{ $g['label'] }}</strong><div class="text-muted">{{ \Illuminate\Support\Str::limit($g['evidence'], 140) }}</div></td>
                 <td class="text-nowrap">{{ $g['competitors_with_it'] }} of {{ $g['competitors'] }}</td><td>{{ $g['fix'] }}</td></tr>
         @empty <tr><td colspan="3" class="text-muted">No problems found by the audit.</td></tr> @endforelse
         </tbody>

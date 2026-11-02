@@ -161,4 +161,25 @@ class CompanyAndLeadTest extends TestCase
         $this->assertDatabaseHas('leads', ['email' => 'edward@growthco.co.uk']);
         $this->assertDatabaseHas('companies', ['domain' => 'growthco.co.uk']);
     }
+
+    public function test_csv_with_separate_first_and_last_name_columns_imports_without_a_full_name_column(): void
+    {
+        // QA 2 Nov: the mapping page forced "Full Name", so an Apollo-style file (first_name, last_name) could not be imported
+        $result = app(CsvImportService::class)->import([
+            ['first_name' => 'Zara', 'Last Name' => 'Ahmed', 'email' => 'zara@qaimport.example', 'company' => 'QA Import Co', 'website' => 'https://qaimport.example'],
+        ], ['email' => 'email', 'company_name' => 'company', 'website' => 'website'], $this->admin->id);
+
+        $this->assertSame(1, $result['imported']);
+        $this->assertDatabaseHas('leads', ['email' => 'zara@qaimport.example', 'first_name' => 'Zara', 'last_name' => 'Ahmed']);
+
+        // full upload -> map -> import through the pages (QA 2 Nov: "Start Import" always said the session had expired,
+        // because the upload went to storage/app/private and the import looked in storage/app)
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('apollo.csv', "first_name,last_name,email\nAli,Khan,ali@qaimport.example\n");
+        $this->actingAs($this->admin)->post(route('leads.import.preview'), ['csv_file' => $file])->assertOk()
+            ->assertSee('Optional: your file has a first-name column', false);
+        $this->actingAs($this->admin)->post(route('leads.import.process'), ['mapping' => ['email' => 'email']])
+            ->assertRedirect(route('leads.index'))->assertSessionHas('success');
+        $this->assertDatabaseHas('leads', ['email' => 'ali@qaimport.example', 'first_name' => 'Ali', 'last_name' => 'Khan']);
+    }
 }

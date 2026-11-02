@@ -39,6 +39,13 @@
                 @endphp
 
                 <div class="row g-3">
+                    @php
+                        $norm = array_map(fn ($h) => strtolower(str_replace([' ', '_', '-'], '', $h)), $headers);
+                        if (array_intersect(['firstname', 'givenname'], $norm)) {
+                            $fields['full_name']['required'] = false;
+                            $fields['full_name']['hint'] = 'Optional: your file has a first-name column, used with last name';
+                        }
+                    @endphp
                     @foreach($fields as $key => $meta)
                     <div class="col-md-6">
                         <div class="p-3 rounded border bg-light-subtle h-100">
