@@ -345,6 +345,45 @@ class AutopilotCoreTest extends TestCase
         $this->assertCount(0, $this->sentMessages());
     }
 
+    public function test_approved_proposal_is_emailed_to_the_lead_once(): void
+    {
+        $rec = $this->outreachFixture('sent');
+        $draft = \App\Models\ProposalDraft::create(['lead_id' => $rec->lead_id, 'company_id' => $rec->lead->company_id, 'service' => 'web_redesign',
+            'title' => 'Proposal outline: Website redesign for Smile Dental', 'body' => "Dear Ali,\n\nNon-binding outline.", 'status' => 'draft']);
+        $this->assertSame('ali@smile.test', $draft->lead->email, 'the draft knows its lead');
+        $svc = app(ApprovalService::class);
+
+        // dry-run blocks the send: the approval fails visibly, nothing goes out
+        OutreachSetting::current()->update(['mode' => 'dry_run']);
+        $dry = $svc->decide($svc->request('proposal_send', "proposal:{$draft->id}:dry", ['title' => 'Send proposal', 'summary' => 's'], $draft), $this->admin, 'approve');
+        $this->assertSame('failed', $dry->status);
+        $this->assertCount(0, $this->sentMessages());
+        $this->assertNotSame('sent', $draft->fresh()->status);
+
+        OutreachSetting::current()->update(['mode' => 'live']);
+        $req = $svc->request('proposal_send', "proposal:{$draft->id}", ['title' => 'Send proposal', 'summary' => 's',
+            'payload' => ['subject' => 'Website redesign outline for Smile Dental']], $draft);
+        $done = $svc->decide($req, $this->admin, 'approve');
+        $this->assertSame('executed', $done->status, (string) $done->execution_result);
+        $this->assertCount(1, $this->sentMessages());
+        $this->assertSame('Website redesign outline for Smile Dental', $this->sentMessages()[0]->getOriginalMessage()->getSubject());
+        $this->assertSame('sent', $draft->fresh()->status);
+        $this->assertSame('proposal_sent', $rec->lead->fresh()->lifecycle_stage);
+
+        // a second approval for the same draft never sends it twice
+        $again = $svc->decide($svc->request('proposal_send', "proposal:{$draft->id}:again", ['title' => 'Send proposal', 'summary' => 's'], $draft), $this->admin, 'approve');
+        $this->assertSame('failed', $again->status);
+        $this->assertCount(1, $this->sentMessages());
+
+        // a deleted lead is never e-mailed
+        $draft2 = \App\Models\ProposalDraft::create(['lead_id' => $rec->lead_id, 'service' => 'web_redesign', 'title' => 'Second outline', 'body' => 'x', 'status' => 'draft']);
+        $rec->lead->delete();
+        $gone = $svc->decide($svc->request('proposal_send', "proposal:{$draft2->id}", ['title' => 'Send proposal', 'summary' => 's'], $draft2), $this->admin, 'approve');
+        $this->assertSame('failed', $gone->status);
+        $this->assertStringContainsString('deleted', (string) $gone->execution_result);
+        $this->assertCount(1, $this->sentMessages());
+    }
+
     public function test_pipeline_states_are_separate_from_score(): void
     {
         $s = app(LeadStateService::class);
