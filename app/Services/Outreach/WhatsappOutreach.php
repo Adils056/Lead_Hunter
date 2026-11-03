@@ -163,7 +163,8 @@ class WhatsappOutreach
                 $out['skipped'][] = "{$c->name}: outside their working hours";
                 continue;
             }
-            if (($lead->email && Suppression::isSuppressed($lead->email, $c->domain)) || ($c->domain && Suppression::isSuppressed(null, $c->domain))) {
+            if (($lead->email && Suppression::isSuppressed($lead->email, $c->domain)) || ($c->domain && Suppression::isSuppressed(null, $c->domain))
+                || WhatsappInbox::optedOut($num['number'])) {
                 $out['funnel']['suppressed']++;
                 continue;
             }

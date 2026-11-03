@@ -320,6 +320,8 @@ return [
             'daily_cap' => (int) env('WHATSAPP_DAILY_CAP', 10),   // keep low: a number that messages many strangers gets banned
             'per_run' => (int) env('WHATSAPP_PER_RUN', 3),
         ],
+        // secret part of the webhook URL EZIMK posts incoming messages to (php artisan leadpilot:whatsapp-webhook-url)
+        'webhook_token' => env('WHATSAPP_WEBHOOK_TOKEN'),
     ],
 
     'alerts' => [

@@ -29,6 +29,8 @@ Route::post('/register', [AuthController::class, 'register'])->name('register.po
 Route::match(['get', 'post'], '/unsubscribe', [CampaignController::class, 'unsubscribe'])->name('campaigns.unsubscribe')->middleware('throttle:30,1');
 
 // Inbound Email & Delivery Provider Webhooks (CSRF exempted)
+// EZIMK WhatsApp: prospects' replies and STOP requests (secret token in the URL; see WhatsappInbox)
+Route::match(['get', 'post'], '/webhooks/whatsapp/{token}', \App\Http\Controllers\WhatsappWebhookController::class)->name('webhooks.whatsapp')->middleware('throttle:120,1');
 Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])->name('webhooks.handle')->middleware('throttle:60,1'); // HMAC-verified in the controller
 
 // The website report a prospect opens from our e-mail (private token link, no login)

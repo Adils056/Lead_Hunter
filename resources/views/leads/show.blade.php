@@ -30,6 +30,10 @@
                 @php($wa = $lead->whatsappMessages()->latest('id')->first())
                 @if($wa)
                     <span title="{{ $wa->provider_response }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp {{ $wa->status === 'sent' ? 'sent ' . $wa->sent_at?->diffForHumans() : str_replace('_', ' ', $wa->status) }} to +{{ $wa->to_number }}</span>
+                    @php($waIn = $lead->whatsappInbound()->whereIn('action', ['reply', 'opt_out'])->latest('id')->first())
+                    @if($waIn)
+                        <span class="{{ $waIn->action === 'opt_out' ? 'text-danger' : 'text-success fw-semibold' }}" title="{{ $waIn->body }}"><i class="bi bi-reply me-1"></i>{{ $waIn->action === 'opt_out' ? 'Asked to stop on WhatsApp' : 'Replied on WhatsApp' }} {{ $waIn->created_at->diffForHumans() }}: “{{ \Illuminate\Support\Str::limit($waIn->body, 60) }}”</span>
+                    @endif
                 @endif
                 @if($lead->contact_status === 'generic_inbox' && $lead->attention_name)
                     <span title="Named on the company's website; e-mails to this inbox are addressed to them"><i class="bi bi-person-check me-1"></i>Attention: {{ $lead->attention_name }}@if($lead->attention_role) ({{ $lead->attention_role }})@endif</span>

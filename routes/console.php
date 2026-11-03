@@ -364,6 +364,11 @@ Artisan::command('leadpilot:whatsapp-outreach {--limit= : Messages this run (def
     }
 })->purpose('Send one WhatsApp per business with its free website report (PDF), within caps and the prospect\'s working hours');
 
+Artisan::command('leadpilot:whatsapp-webhook-url', function () {
+    // Paste this into EZIMK → My Devices → Edit → Webhook Url, so replies and STOP requests reach LeadPilot
+    $this->line(\App\Services\Outreach\WhatsappInbox::webhookUrl());
+})->purpose('The URL to paste into EZIMK (device → Webhook Url) for incoming WhatsApp replies');
+
 Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
     // The free website & competitor report goes into the first e-mail as a link, so build it ahead of time for the
     // companies closest to an e-mail (rungs A and B), from audits already done. No AI unless --ai: the report reads
