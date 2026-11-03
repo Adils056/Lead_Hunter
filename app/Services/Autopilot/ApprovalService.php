@@ -226,6 +226,7 @@ class ApprovalService
                 'spend_over_budget' => $this->executeSpend($req),
                 'integration_enable' => $this->executeIntegration($req),
                 'proposal_send' => $this->executeProposal($req),
+                'whatsapp_message' => $this->executeWhatsapp($req),
                 'meeting_slots' => $this->executeMeetingSlots($req),
                 'paid_discovery' => $this->executePaidDiscovery($req),
                 default => 'No executor for this type; decision recorded.',
@@ -329,6 +330,25 @@ class ApprovalService
         return "Proposal sent (SMTP accepted, Message-ID {$msgId}).";
     }
 
+    protected function executeWhatsapp(ApprovalRequest $req): string
+    {
+        $msg = \App\Models\WhatsappMessage::findOrFail($req->subject_id);
+        if ($msg->status !== 'pending_approval') {
+            throw new \RuntimeException("Not sent: this WhatsApp is already {$msg->status}.");
+        }
+        if ($why = app(\App\Services\Outreach\WhatsappOutreach::class)->blockReason()) {
+            if (!str_starts_with($why, 'Daily WhatsApp cap')) {
+                throw new \RuntimeException("Not sent: {$why}");
+            }
+        }
+        $body = (string) ($req->payload['body'] ?? $msg->body);
+        if (!app(\App\Services\Outreach\WhatsappOutreach::class)->deliver($msg, $body)) {
+            throw new \RuntimeException('The WhatsApp gateway refused it: ' . mb_substr((string) $msg->fresh()->provider_response, 0, 300));
+        }
+
+        return "WhatsApp sent to +{$msg->to_number} with the report PDF.";
+    }
+
     protected function executeMeetingSlots(ApprovalRequest $req): string
     {
         $p = (array) $req->payload;
@@ -354,6 +374,9 @@ class ApprovalService
         }
         if ($req->type === 'proposal_send') {
             ProposalDraft::whereKey($req->subject_id)->update(['status' => 'rejected']);
+        }
+        if ($req->type === 'whatsapp_message') {
+            \App\Models\WhatsappMessage::whereKey($req->subject_id)->update(['status' => 'rejected']);
         }
     }
 

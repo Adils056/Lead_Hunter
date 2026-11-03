@@ -295,6 +295,7 @@ return [
         'drafting.ai' => 'automatic',             // LLM polish (counts toward AI budget)
         'outreach.first_touch' => 'approval',     // SAFE DEFAULT: a human approves each first email
         'outreach.follow_up' => 'automatic',      // follow-ups of an approved thread, stop on any reply
+        'outreach.whatsapp' => 'automatic',       // one WhatsApp per company with the report PDF (only when WHATSAPP_OUTREACH=true)
         'reply.classify' => 'automatic',
         'reply.auto_respond' => 'prohibited',     // replies to humans are always reviewed
         'crm.stage_update' => 'automatic',
@@ -306,6 +307,21 @@ return [
 
     // Instant alerts when a prospect replies or opens their report: WhatsApp/SMS via Twilio to each user's phone
     // (Profile → phone, international format like +923001234567) and/or a webhook (Make, Zapier, n8n, Slack...).
+    // WhatsApp gateway (EZIMK: ezimk.com → My Apps → integration keys). Used for instant alerts to the team and,
+    // when WHATSAPP_OUTREACH=true, for one first message per business with its website report as a PDF.
+    'whatsapp' => [
+        'ezimk' => [
+            'url' => env('EZIMK_API_URL', 'https://ezimk.com/api/create-message'),
+            'appkey' => env('EZIMK_APPKEY'),
+            'authkey' => env('EZIMK_AUTHKEY'),
+        ],
+        'outreach' => [
+            'enabled' => (bool) env('WHATSAPP_OUTREACH', false),
+            'daily_cap' => (int) env('WHATSAPP_DAILY_CAP', 10),   // keep low: a number that messages many strangers gets banned
+            'per_run' => (int) env('WHATSAPP_PER_RUN', 3),
+        ],
+    ],
+
     'alerts' => [
         'webhook_url' => env('LEADPILOT_ALERT_WEBHOOK_URL'),
         'twilio' => [

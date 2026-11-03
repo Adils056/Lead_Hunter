@@ -27,6 +27,10 @@
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3 text-muted small mt-1">
                 <span><i class="bi bi-briefcase me-1"></i>{{ $lead->job_title ?: 'Role unknown' }}</span>
+                @php($wa = $lead->whatsappMessages()->latest('id')->first())
+                @if($wa)
+                    <span title="{{ $wa->provider_response }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp {{ $wa->status === 'sent' ? 'sent ' . $wa->sent_at?->diffForHumans() : str_replace('_', ' ', $wa->status) }} to +{{ $wa->to_number }}</span>
+                @endif
                 @if($lead->contact_status === 'generic_inbox' && $lead->attention_name)
                     <span title="Named on the company's website; e-mails to this inbox are addressed to them"><i class="bi bi-person-check me-1"></i>Attention: {{ $lead->attention_name }}@if($lead->attention_role) ({{ $lead->attention_role }})@endif</span>
                 @endif

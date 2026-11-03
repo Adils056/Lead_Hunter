@@ -346,6 +346,20 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
     $this->info("Re-audited {$done} of {$companies->count()} companies: {$withPeople} list decision-makers, {$named} new named contact(s) with their own published email.");
 })->purpose('Read team / about pages of shared-inbox companies for named decision-makers (never guesses an email)');
 
+Artisan::command('leadpilot:whatsapp-outreach {--limit= : Messages this run (default WHATSAPP_PER_RUN)}', function (\App\Services\Outreach\WhatsappOutreach $wa) {
+    // One WhatsApp per business with its website report as a PDF (off unless WHATSAPP_OUTREACH=true; see WhatsappOutreach)
+    $r = $wa->run($this->option('limit') !== null ? (int) $this->option('limit') : null);
+    if ($r['blocked']) {
+        $this->line('Not sending: ' . $r['blocked']);
+
+        return 0;
+    }
+    foreach (array_slice($r['skipped'], 0, 10) as $s) {
+        $this->line("  skipped {$s}");
+    }
+    $this->info("WhatsApp: {$r['sent']} sent, {$r['queued_for_approval']} waiting for approval, {$r['failed']} refused by the gateway; " . $wa->sentToday() . ' today.');
+})->purpose('Send one WhatsApp per business with its free website report (PDF), within caps and the prospect\'s working hours');
+
 Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
     // The free website & competitor report goes into the first e-mail as a link, so build it ahead of time for the
     // companies closest to an e-mail (rungs A and B), from audits already done. No AI unless --ai: the report reads
@@ -959,6 +973,7 @@ Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('0
 foreach (['09:10', '15:10', '21:10'] as $at) {
     Schedule::command('leadpilot:find-people --limit=60 --seconds=540')->dailyAt($at)->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 }
+Schedule::command('leadpilot:whatsapp-outreach')->everyThirtyMinutes()->withoutOverlapping(25)->runInBackground();
 Schedule::command('leadpilot:build-reports --limit=25 --seconds=420')->dailyAt('05:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:build-reports --limit=15 --seconds=300')->dailyAt('12:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:address-inboxes')->dailyAt('04:50')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
