@@ -145,6 +145,7 @@ class LeadScoringService
             $title !== '' && (bool) preg_match(self::DECISION_MAKER, $title) => [1.0, "Decision maker: {$title}"],
             $title !== '' && (bool) preg_match(self::INFLUENCER, $title) => [0.7, "Influencer: {$title}"],
             $title !== '' => [0.4, "Known role: {$title}"],
+            $lead->contact_status === 'generic_inbox' && $lead->attention_name => [0.6, "Decision-maker known by name ({$lead->attention_name}" . ($lead->attention_role ? ", {$lead->attention_role}" : '') . '), reached through the business inbox'],
             $lead->contact_status === 'generic_inbox' => [0.25, 'Only a public business inbox is known'],
             default => [0, null],
         };

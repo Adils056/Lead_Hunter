@@ -184,6 +184,7 @@ class WinLadderService
             'decision_maker' => $prefHit || ($title !== '' && preg_match(LeadScoringService::DECISION_MAKER, $title)),
             'named' => (bool) ($lead->first_name || $lead->last_name),
             'shared_inbox' => $lead->contact_status === 'generic_inbox',
+            'addressed' => $lead->contact_status === 'generic_inbox' && (bool) $lead->attention_name,
             'email_status' => $emailStatus,
             'evidence_age_days' => $age,
             'active_business' => $company && (int) $company->google_review_count >= 20,

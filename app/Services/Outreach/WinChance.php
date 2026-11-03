@@ -52,7 +52,7 @@ class WinChance
         $m = 1.0;
         $m *= match (true) {
             !empty($f['decision_maker']) => 1.4,      // the owner / founder reads it
-            !empty($f['shared_inbox']) => 0.5,        // info@ is filtered by someone else
+            !empty($f['shared_inbox']) => !empty($f['addressed']) ? 0.7 : 0.5, // info@ is filtered by someone else; "For Dr Khan" gets passed on more often
             !empty($f['named']) => 1.0,
             default => 0.7,
         };

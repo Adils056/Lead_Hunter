@@ -346,6 +346,50 @@ Artisan::command('leadpilot:find-people {--limit=40 : Companies to re-audit} {--
     $this->info("Re-audited {$done} of {$companies->count()} companies: {$withPeople} list decision-makers, {$named} new named contact(s) with their own published email.");
 })->purpose('Read team / about pages of shared-inbox companies for named decision-makers (never guesses an email)');
 
+Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
+    // The free website & competitor report goes into the first e-mail as a link, so build it ahead of time for the
+    // companies closest to an e-mail (rungs A and B), from audits already done. No AI unless --ai: the report reads
+    // well without it, and the AI budget stays for drafting.
+    $deadline = microtime(true) + (int) $this->option('seconds');
+    $companies = \App\Models\Company::where('status', '<>', 'archived')->whereNotNull('industry_group')->whereNotNull('country')
+        ->where('website_audited_at', '>=', now()->subDays(30))
+        ->whereHas('leads', fn ($q) => $q->whereIn('win_tier', ['A', 'B']))
+        ->whereDoesntHave('websiteReports', fn ($q) => $q->where('created_at', '>=', now()->subDays(30)))
+        ->withExists(['leads as ready_now' => fn ($q) => $q->where('win_tier', 'A')])->withMax('leads', 'overall_score')
+        ->orderByDesc('ready_now')->orderByDesc('leads_max_overall_score')->limit((int) $this->option('limit'))->get();
+    $built = $shareable = 0;
+    foreach ($companies as $c) {
+        if (microtime(true) > $deadline) {
+            break;
+        }
+        try {
+            $r = $reports->generate($c, null, 15, (bool) $this->option('ai'));
+        } catch (\Throwable $e) {
+            $this->line("  {$c->id} {$c->name}: " . mb_substr($e->getMessage(), 0, 80));
+            continue;
+        }
+        $built++;
+        $shareable += $r->isShareable() ? 1 : 0;
+    }
+    $this->info("Built {$built} report(s); {$shareable} compare with at least one local competitor and will be linked in the first e-mail.");
+})->purpose('Build website & competitor reports for the leads closest to an e-mail, so the e-mail can link them');
+
+Artisan::command('leadpilot:address-inboxes', function (\App\Services\LeadScoringService $scoring) {
+    // Shared-inbox leads whose company's own site names a decision-maker get addressed to that person, from audits
+    // already on file (no web requests). New audits do this as they run; this fills in the ones done before.
+    $companies = \App\Models\Company::whereHas('leads', fn ($q) => $q->where('contact_status', 'generic_inbox')->whereNull('attention_name'))
+        ->whereHas('websiteAudits', fn ($q) => $q->whereJsonLength('contacts_found->people', '>', 0))->with('latestCompletedWebsiteAudit')->lazy(200);
+    $leads = 0;
+    foreach ($companies as $c) {
+        $n = \App\Services\Audit\WebsiteAuditService::addressSharedInbox($c, (array) ($c->latestCompletedWebsiteAudit?->contacts_found['people'] ?? []));
+        if ($n) {
+            $leads += $n;
+            $c->leads()->where('contact_status', 'generic_inbox')->get()->each(fn ($l) => $scoring->evaluateLead($l));
+        }
+    }
+    $this->info("Addressed {$leads} shared-inbox lead(s) to a named decision-maker and re-scored them.");
+})->purpose('Address info@ leads to the owner / director named on the company website (no guessed e-mails)');
+
 Artisan::command('leadpilot:reaudit-shells {--seconds=300 : Stop after this many seconds}', function (\App\Services\Audit\WebsiteAuditService $audits, \App\Services\LeadScoringService $scoring) {
     // Audits taken from a tiny forwarding / JavaScript-only page (under 4 KB) reported gaps the real site may not have.
     // Re-run them: the audit now follows the redirect, or records "no content" and claims nothing.
@@ -915,6 +959,9 @@ Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('0
 foreach (['09:10', '15:10', '21:10'] as $at) {
     Schedule::command('leadpilot:find-people --limit=60 --seconds=540')->dailyAt($at)->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 }
+Schedule::command('leadpilot:build-reports --limit=25 --seconds=420')->dailyAt('05:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
+Schedule::command('leadpilot:build-reports --limit=15 --seconds=300')->dailyAt('12:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
+Schedule::command('leadpilot:address-inboxes')->dailyAt('04:50')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:find-emails --limit=60 --seconds=600')->dailyAt('03:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20)->runInBackground();
 // second pass for decision-makers that daytime audits (autopilot, website finder) put on the record
 Schedule::command('leadpilot:find-emails --limit=40 --seconds=420')->dailyAt('14:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();

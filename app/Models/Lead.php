@@ -25,6 +25,8 @@ class Lead extends Model
         'last_name',
         'full_name',
         'job_title',
+        'attention_name',
+        'attention_role',
         'email',
         'email_verification_status',
         'phone',
@@ -115,6 +117,20 @@ class Lead extends Model
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    /** How to greet a shared inbox addressed to a named decision-maker: "Dr Khan" for titled names, else the first name. */
+    public function attentionGreetingName(): ?string
+    {
+        $n = trim((string) $this->attention_name);
+        if ($n === '') {
+            return null;
+        }
+        if (preg_match('/^(Dr|Prof|Engr)\.?\s+(?:\S+\s+)*?(\S+)$/i', $n, $m)) {
+            return ucfirst(strtolower($m[1])) . ' ' . $m[2];
+        }
+
+        return strtok(preg_replace('/^(Mr|Mrs|Ms|Miss)\.?\s+/i', '', $n), ' ') ?: null;
     }
 
     /** Stages where a prospect is in a conversation or closed: cold e-mail (campaigns, sequences) must not reach them. */

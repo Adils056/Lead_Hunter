@@ -59,12 +59,12 @@
 </tr></table>
 
 <h2>What to fix first</h2>
-<table>
+<table class="fixes">
     <thead><tr><th style="width: 38%">Finding</th><th class="num">Competitors who have it</th><th>How to fix</th></tr></thead>
     <tbody>
     @forelse(array_slice($b['gaps'], 0, 10) as $g)
         <tr><td><span class="tag {{ $g['status'] }}">{{ $g['status'] === 'fail' ? 'Problem' : 'Improve' }}</span> <strong>{{ $g['label'] }}</strong><br><span class="muted">{{ \Illuminate\Support\Str::limit($g['evidence'], 150) }}</span></td>
-            <td class="num">{{ $g['competitors_with_it'] }} of {{ $g['competitors'] }}</td><td>{{ $g['fix'] }}</td></tr>
+            <td class="num" data-label="Competitors who have it">{{ $g['competitors_with_it'] }} of {{ $g['competitors'] }}</td><td data-label="How to fix">{{ $g['fix'] }}</td></tr>
     @empty <tr><td colspan="3" class="muted">No problems found by the automated checks.</td></tr> @endforelse
     </tbody>
 </table>

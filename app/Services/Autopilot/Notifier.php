@@ -60,8 +60,62 @@ class Notifier
                 $result['mail'] = 'failed: ' . mb_substr($e->getMessage(), 0, 120);
             }
         }
+        if (!empty($payload['urgent'])) {
+            $result += $this->instant($user, $payload, $dedupeKey);
+        }
 
         return $result;
+    }
+
+    /**
+     * Urgent alerts (a prospect replied, opened their report) also go where the salesperson sees them in minutes:
+     * WhatsApp or SMS through Twilio to the user's phone, and/or a webhook (Make, Zapier, n8n, Slack...).
+     * Each attempt is recorded with its real outcome; nothing configured = nothing sent, never an error.
+     */
+    protected function instant(User $user, array $payload, string $key): array
+    {
+        $out = [];
+        $text = (string) ($payload['short'] ?? (($payload['title'] ?? 'LeadPilot alert') . (!empty($payload['url']) ? ' ' . $payload['url'] : '')));
+        $cfg = (array) config('leadpilot.alerts', []);
+        $record = function (string $channel, string $status, ?string $error = null) use ($user, $key, $payload, &$out) {
+            NotificationDelivery::create(['user_id' => $user->id, 'channel' => $channel, 'dedupe_key' => $key, 'status' => $status,
+                'error' => $error ? mb_substr($error, 0, 1000) : null, 'subject_ref' => mb_substr($payload['title'] ?? '', 0, 120)]);
+            $out[$channel] = $status;
+        };
+
+        if (!empty($cfg['webhook_url'])) {
+            try {
+                $res = \Illuminate\Support\Facades\Http::timeout(8)->acceptJson()->post($cfg['webhook_url'], [
+                    'text' => $text, 'title' => $payload['title'] ?? null, 'url' => $payload['url'] ?? null,
+                    'user_email' => $user->email, 'user_phone' => $user->phone, 'priority' => $payload['priority'] ?? 'high',
+                ]);
+                $res->successful() ? $record('webhook', 'delivered') : $record('webhook', 'failed', 'HTTP ' . $res->status());
+            } catch (\Throwable $e) {
+                $record('webhook', 'failed', $e->getMessage());
+            }
+        }
+
+        $tw = (array) ($cfg['twilio'] ?? []);
+        $phone = preg_replace('/[^\d+]/', '', (string) $user->phone);
+        if (!empty($tw['sid']) && !empty($tw['token']) && !empty($tw['from'])) {
+            $whatsapp = str_starts_with((string) $tw['from'], 'whatsapp:');
+            $channel = $whatsapp ? 'whatsapp' : 'sms';
+            if (!preg_match('/^\+\d{8,15}$/', $phone)) {
+                $record($channel, 'skipped', 'No phone in international format (+92…) on this user\'s profile.');
+            } else {
+                try {
+                    $res = \Illuminate\Support\Facades\Http::timeout(10)->asForm()->withBasicAuth($tw['sid'], $tw['token'])
+                        ->post("https://api.twilio.com/2010-04-01/Accounts/{$tw['sid']}/Messages.json", [
+                            'From' => $tw['from'], 'To' => ($whatsapp ? 'whatsapp:' : '') . $phone, 'Body' => mb_substr($text, 0, 1500),
+                        ]);
+                    $res->successful() ? $record($channel, 'accepted_by_provider') : $record($channel, 'failed', 'HTTP ' . $res->status() . ' ' . mb_substr($res->body(), 0, 300));
+                } catch (\Throwable $e) {
+                    $record($channel, 'failed', $e->getMessage());
+                }
+            }
+        }
+
+        return $out;
     }
 
     /** Clear the in-app entries of one approval: deleted when a reminder replaces them, marked read once it is decided. */

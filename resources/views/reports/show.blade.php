@@ -12,6 +12,11 @@
     <div class="d-flex gap-2">
         <a href="{{ route('companies.report.pdf', $company) }}" class="btn btn-sm btn-primary-lp"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
         <form method="POST" action="{{ route('companies.report.build', $company) }}">@csrf<button class="btn btn-sm btn-light border">Rebuild</button></form>
+        @if($report->share_token)
+            <span class="small {{ $report->first_viewed_at ? 'text-success fw-semibold' : 'text-muted' }}" title="The prospect's private link from our e-mail">
+                <i class="bi bi-eye me-1"></i>{{ $report->first_viewed_at ? 'Opened by the prospect ' . $report->view_count . '× · last ' . $report->last_viewed_at->diffForHumans() : 'Link sent, not opened yet' }}
+            </span>
+        @endif
     </div>
 </div>
 

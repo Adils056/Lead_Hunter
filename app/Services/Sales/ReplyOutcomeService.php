@@ -26,6 +26,12 @@ class ReplyOutcomeService
         // positive (or a decline) in the metrics before someone confirms it. The guess stays on the approval request.
         $stored = $needsHuman && $r['category'] !== 'out_of_office' ? ['category' => 'uncertain'] : $r;
         $reply->update(['category' => $stored['category'], 'classification' => ReplyClassifier::legacyLabel($stored), 'ai_confidence' => $r['confidence'], 'ai_reasoning' => $r['reasoning']]);
+        // the salesperson hears about a real reply at once (WhatsApp / SMS / webhook when set up), confident or not
+        try {
+            app(EngagementAlerts::class)->replyReceived($reply, $r['category']);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Reply alert failed for reply {$reply->id}: " . mb_substr($e->getMessage(), 0, 200));
+        }
 
         if ($needsHuman) {
             $this->stopSequences($reply->lead, 'Reply received — awaiting human classification.');
