@@ -36,7 +36,7 @@ class WhatsappOutreachTest extends TestCase
             'leadpilot.whatsapp.outreach' => ['enabled' => true, 'daily_cap' => 10, 'per_run' => 3],
             'leadpilot.autopilot.sending_hours' => [0, 24], 'leadpilot.autopilot.sending_days' => [1, 2, 3, 4, 5, 6, 7],
         ]);
-        Http::fake(['ezimk.com/*' => Http::response(['status' => true, 'message' => 'Message sent'], 200), '*' => Http::response('', 404)]);
+        Http::fake(['ezimk.com/*' => Http::response(['message_status' => 'Success', 'data' => ['to' => '923001234567', 'status_code' => 200]], 200), '*' => Http::response('', 404)]);
         $this->admin = User::factory()->create(['role' => 'admin', 'is_active' => true, 'phone' => '+923331112223']);
         OutreachSetting::current()->update(['mode' => 'live', 'allowed_countries' => ['Pakistan']]);
     }
@@ -149,6 +149,15 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame('executed', $done->status, (string) $done->execution_result);
         $this->assertSame('sent', WhatsappMessage::first()->status);
         Http::assertSentCount(1);
+    }
+
+    public function test_a_200_that_says_failed_is_not_counted_as_sent(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory()); // drop the "Success" fake from setUp
+        Http::fake(['ezimk.com/*' => Http::response(['message_status' => 'Failed', 'message' => 'Number is not on WhatsApp'], 200)]);
+        $res = app(\App\Services\Outreach\WhatsappGateway::class)->send('923001234567', 'hi');
+        $this->assertFalse($res['ok']);
+        $this->assertStringContainsString('not on WhatsApp', $res['response']);
     }
 
     public function test_team_alerts_go_to_whatsapp_through_the_same_gateway(): void

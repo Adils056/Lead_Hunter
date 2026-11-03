@@ -38,7 +38,9 @@ class WhatsappGateway
         }
         $json = $res->json();
         // a 200 with {"status": false} or {"success": false} or an "error" field is a refusal, not a send
-        $refused = is_array($json) && ((array_key_exists('status', $json) && in_array($json['status'], [false, 'false', 'error', 'failed'], true))
+        // EZIMK answers {"message_status":"Success","data":{...}}; anything else in that field is a refusal
+        $refused = is_array($json) && ((array_key_exists('message_status', $json) && strcasecmp((string) $json['message_status'], 'success') !== 0)
+            || (array_key_exists('status', $json) && in_array($json['status'], [false, 'false', 'error', 'failed'], true))
             || (array_key_exists('success', $json) && !$json['success']) || !empty($json['error']));
 
         return ['ok' => $res->successful() && !$refused, 'status' => $res->status(), 'response' => mb_substr((string) $res->body(), 0, 1000)];
