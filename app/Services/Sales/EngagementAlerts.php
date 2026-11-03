@@ -39,6 +39,23 @@ class EngagementAlerts
         ], "reply-alert:{$reply->id}");
     }
 
+    /** The prospect answered our WhatsApp. One alert per lead per hour, however many messages they send. */
+    public function whatsappReplied(Lead $lead, string $text, \App\Models\WhatsappInboundMessage $in): void
+    {
+        $who = $this->who($lead);
+        $this->task($lead, 'Replied on WhatsApp: answer now');
+        $this->notifyOwner($lead, [
+            'title' => "{$who} replied on WhatsApp: answer now",
+            'priority' => 'high',
+            'what' => 'They wrote: "' . mb_substr(trim(preg_replace('/\s+/', ' ', $text)), 0, 280) . '"',
+            'why' => 'They answered the message with their website report. An answer within the hour is the best chance of a meeting.',
+            'affected' => $who,
+            'recommended' => "Answer on WhatsApp (+{$in->from_number})",
+            'url' => route('leads.show', $lead),
+            'short' => "LeadPilot: {$who} replied on WhatsApp: \"" . mb_substr(trim($text), 0, 120) . "\". Answer now: https://wa.me/{$in->from_number}",
+        ], 'whatsapp-reply:' . $lead->id . ':' . now()->format('YmdH'));
+    }
+
     /** A person (not a link scanner) opened the report for the first time. */
     public function reportViewed(WebsiteReport $report): void
     {

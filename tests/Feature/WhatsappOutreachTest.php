@@ -184,6 +184,63 @@ class WhatsappOutreachTest extends TestCase
         $this->assertStringContainsString('not on WhatsApp', $res['response']);
     }
 
+    public function test_a_reply_on_whatsapp_stops_follow_ups_and_alerts_the_salesperson(): void
+    {
+        [, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+
+        // a wrong token is not found, and nothing is recorded
+        $this->post(str_replace(\App\Services\Outreach\WhatsappInbox::token(), 'wrong', $url), ['from' => '923001234567', 'message' => 'hi'])->assertNotFound();
+        $this->get($url)->assertOk();
+
+        // EZIMK-style nested JSON, number with the WhatsApp suffix
+        $this->postJson($url, ['data' => ['id' => 'wamid-1', 'from' => '923001234567@s.whatsapp.net', 'fromMe' => false, 'message' => 'Yes please, what would the fixes cost?']])
+            ->assertOk()->assertJson(['action' => 'reply']);
+        $lead = $lead->fresh();
+        $this->assertSame('replied', $lead->lifecycle_stage);
+        $this->assertSame('Replied on WhatsApp: answer now', \App\Models\Task::where('lead_id', $lead->id)->value('title'));
+        $this->actingAs($this->admin)->get(route('leads.show', $lead))->assertOk()->assertSee('Replied on WhatsApp')->assertSee('what would the fixes cost');
+        Http::assertSent(fn ($req) => collect($req->data())->pluck('contents', 'name')->get('to') === '923331112223'
+            && str_contains((string) collect($req->data())->pluck('contents', 'name')->get('message'), 'replied on WhatsApp'));
+
+        // the gateway retrying the same message changes nothing
+        $this->postJson($url, ['data' => ['id' => 'wamid-1', 'from' => '923001234567', 'message' => 'Yes please, what would the fixes cost?']]);
+        $this->assertSame(1, \App\Models\WhatsappInboundMessage::count());
+        // a field shared by every message (the device's id) is not mistaken for the message id
+        $this->post($url, ['device' => ['id' => 'dev-1'], 'number' => '923339990000', 'from' => '923001234567', 'message' => 'Also, are you in Lahore?']);
+        $this->post($url, ['device' => ['id' => 'dev-1'], 'number' => '923339990000', 'from' => '923001234567', 'message' => 'Call me after 5']);
+        $this->assertSame(3, \App\Models\WhatsappInboundMessage::where('action', 'reply')->count());
+
+        // a number we never messaged, or our own outgoing echo, is logged but not acted on
+        $this->post($url, ['from' => '923119998887', 'message' => 'who is this?'])->assertJson(['action' => 'unmatched']);
+        $this->postJson($url, ['data' => ['from' => '923001234567', 'fromMe' => true, 'message' => 'stop']])->assertJson(['action' => 'ignored']);
+        $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
+    }
+
+    public function test_stop_on_whatsapp_suppresses_the_business_everywhere(): void
+    {
+        [$me, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+
+        $this->post(\App\Services\Outreach\WhatsappInbox::webhookUrl(), ['from' => '+92 300 1234567', 'message' => 'STOP'])->assertJson(['action' => 'opt_out']);
+
+        $this->assertSame('opted_out', $lead->fresh()->lifecycle_stage);
+        $this->assertTrue(\App\Models\Suppression::isSuppressed($lead->email));
+        $this->assertTrue(\App\Services\Outreach\WhatsappInbox::optedOut('923001234567'));
+        foreach (['stop', 'Please unsubscribe me', 'band karo', 'Remove me from your list'] as $t) {
+            $this->assertTrue(\App\Services\Outreach\WhatsappInbox::isOptOut($t), $t);
+        }
+        foreach (['Yes, call me tomorrow', '', 'What does it cost?'] as $t) {
+            $this->assertFalse(\App\Services\Outreach\WhatsappInbox::isOptOut($t), $t);
+        }
+    }
+
+    public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
+    {
+        $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);
+    }
+
     public function test_team_alerts_go_to_whatsapp_through_the_same_gateway(): void
     {
         [$me, $lead] = $this->market();
