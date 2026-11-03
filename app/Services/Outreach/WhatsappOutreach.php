@@ -25,6 +25,9 @@ use App\Support\Phone;
  */
 class WhatsappOutreach
 {
+    /** @var array<int, array{number: string, source: string}|null> lead id => WhatsApp number, from candidates() */
+    protected array $numbers = [];
+
     public function __construct(
         protected WhatsappGateway $gateway,
         protected AutonomyPolicyService $policy,
@@ -78,13 +81,17 @@ class WhatsappOutreach
         return null;
     }
 
-    /** Leads that may get their one WhatsApp, best first. */
-    public function candidates(int $limit)
+    /**
+     * Leads that may get their one WhatsApp, best first, each with a number that is on WhatsApp (in $this->numbers).
+     * Many listed numbers are landlines or US/UK office lines, so a wide slice is read and filtered here; reading only
+     * a few leads per message left runs with nothing to send. $stats counts what was read and how many had no number.
+     */
+    public function candidates(int $limit, array &$stats = [])
     {
         $allowed = OutreachSetting::current()->allowed_countries ?: [];
         $recentEmail = now()->subDays(30);
 
-        return Lead::query()->with(['company.latestCompletedWebsiteAudit', 'company.latestWebsiteReport'])
+        $leads = Lead::query()->with(['company.latestCompletedWebsiteAudit', 'company.latestWebsiteReport'])
             ->whereNull('last_contacted_at')
             ->where(fn ($q) => $q->whereNull('lifecycle_stage')->orWhereNotIn('lifecycle_stage', array_merge(Lead::NO_COLD_EMAIL_STAGES, ['contacted'])))
             ->whereIn('win_tier', ['A', 'B', 'C'])
@@ -95,8 +102,18 @@ class WhatsappOutreach
             ->where(fn ($q) => $q->whereNotNull('phone')->orWhereHas('company', fn ($c) => $c->whereNotNull('public_phone')
                 ->orWhereHas('websiteAudits', fn ($a) => $a->whereNotNull('contacts_found->socials->wa.me'))))
             ->orderByRaw("CASE win_tier WHEN 'A' THEN 0 WHEN 'B' THEN 1 ELSE 2 END")->orderByDesc('overall_score')
-            ->limit($limit * 8)->get()
+            ->limit(max(300, $limit * 60))->get()
             ->unique('company_id')->values();
+
+        $stats['checked'] = $leads->count();
+        $withNumber = $leads->filter(function (Lead $lead) {
+            $this->numbers[$lead->id] = $this->numberFor($lead);
+
+            return $this->numbers[$lead->id] !== null;
+        })->values();
+        $stats['no_whatsapp_number'] = $stats['checked'] - $withNumber->count();
+
+        return $withNumber;
     }
 
     /** The message text, or null when there is no observation to open with (no evidence, no message). */
@@ -124,30 +141,34 @@ class WhatsappOutreach
     public function run(?int $limit = null): array
     {
         $limit ??= (int) config('leadpilot.whatsapp.outreach.per_run', 3);
-        $out = ['sent' => 0, 'queued_for_approval' => 0, 'failed' => 0, 'skipped' => [], 'blocked' => null];
+        $out = ['sent' => 0, 'queued_for_approval' => 0, 'failed' => 0, 'skipped' => [], 'blocked' => null,
+            'funnel' => ['checked' => 0, 'no_whatsapp_number' => 0, 'outside_hours' => 0, 'suppressed' => 0, 'email_in_progress' => 0, 'no_shareable_report' => 0, 'no_observation' => 0]];
         if ($why = $this->blockReason()) {
             $out['blocked'] = $why;
 
             return $out;
         }
         $reportsBuilt = 0;
-        foreach ($this->candidates($limit) as $lead) {
+        $stats = [];
+        $candidates = $this->candidates($limit, $stats);
+        $out['funnel'] = array_merge($out['funnel'], $stats);
+        foreach ($candidates as $lead) {
             if ($out['sent'] + $out['queued_for_approval'] >= $limit || $this->blockReason()) {
                 break;
             }
             $c = $lead->company;
-            $num = $this->numberFor($lead);
-            if (!$num) {
-                continue;
-            }
+            $num = $this->numbers[$lead->id];
             if (!$this->sequence->inSendingWindow(null, $lead)) {
+                $out['funnel']['outside_hours']++;
                 $out['skipped'][] = "{$c->name}: outside their working hours";
                 continue;
             }
             if (($lead->email && Suppression::isSuppressed($lead->email, $c->domain)) || ($c->domain && Suppression::isSuppressed(null, $c->domain))) {
+                $out['funnel']['suppressed']++;
                 continue;
             }
             if (CampaignRecipient::whereHas('lead', fn ($q) => $q->where('company_id', $c->id))->whereIn('status', ['pending_approval', 'approved', 'queued', 'scheduled'])->exists()) {
+                $out['funnel']['email_in_progress']++;
                 continue; // an e-mail is already on its way to this business: one conversation at a time
             }
             $report = $c->latestWebsiteReport;
@@ -160,11 +181,13 @@ class WhatsappOutreach
                 }
             }
             if (!$report || !$report->isShareable()) {
+                $out['funnel']['no_shareable_report']++;
                 continue; // the report is the point of the message
             }
             $url = $report->shareUrl();
             $body = $this->compose($lead, $url, $report->competitorCount());
             if (!$body) {
+                $out['funnel']['no_observation']++;
                 continue;
             }
             $msg = WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $c->id, 'to_number' => $num['number'], 'number_source' => $num['source'],

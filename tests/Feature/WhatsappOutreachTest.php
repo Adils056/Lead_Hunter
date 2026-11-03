@@ -113,6 +113,30 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame(['number' => '923217654321', 'source' => 'website_whatsapp_link'], $wa->numberFor($this->lead($linked)));
     }
 
+    public function test_landlines_ahead_in_the_queue_do_not_hide_a_whatsapp_number_further_down(): void
+    {
+        [$me, $lead] = $this->market();
+        // twelve higher-scored businesses that only list an office landline
+        foreach (range(1, 12) as $i) {
+            $l = $this->lead($this->clinic("Landline Clinic {$i}", ['viewport' => 'fail', 'https' => 'pass'], '042 3576' . str_pad((string) $i, 4, '0', STR_PAD_LEFT)));
+            $l->update(['overall_score' => 90]);
+        }
+        $r = app(WhatsappOutreach::class)->run(1);
+
+        $this->assertSame(1, $r['sent'], json_encode($r));
+        $this->assertSame($me->id, WhatsappMessage::first()->company_id);
+        $this->assertSame(12, $r['funnel']['no_whatsapp_number']);
+    }
+
+    public function test_a_run_that_sends_nothing_says_why(): void
+    {
+        $this->lead($this->clinic('Landline Only', ['viewport' => 'fail', 'https' => 'pass'], '042 35761234'));
+
+        $this->artisan('leadpilot:whatsapp-outreach', ['--limit' => 1])
+            ->expectsOutputToContain('Why nothing was sent: checked 1, no whatsapp number 1')->assertExitCode(0);
+        Http::assertNothingSent();
+    }
+
     public function test_nothing_goes_out_when_off_in_dry_run_or_to_people_already_talking_to_us(): void
     {
         [, $lead] = $this->market();

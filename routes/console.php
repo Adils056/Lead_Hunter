@@ -358,6 +358,10 @@ Artisan::command('leadpilot:whatsapp-outreach {--limit= : Messages this run (def
         $this->line("  skipped {$s}");
     }
     $this->info("WhatsApp: {$r['sent']} sent, {$r['queued_for_approval']} waiting for approval, {$r['failed']} refused by the gateway; " . $wa->sentToday() . ' today.');
+    if ($r['sent'] + $r['queued_for_approval'] + $r['failed'] === 0) {
+        // nothing went out: show where the leads dropped out, so the reason is never a guess
+        $this->line('Why nothing was sent: ' . collect($r['funnel'])->map(fn ($n, $k) => str_replace('_', ' ', $k) . " {$n}")->implode(', '));
+    }
 })->purpose('Send one WhatsApp per business with its free website report (PDF), within caps and the prospect\'s working hours');
 
 Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
