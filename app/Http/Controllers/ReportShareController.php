@@ -36,6 +36,15 @@ class ReportShareController extends Controller
         return response($html)->header('X-Robots-Tag', 'noindex, nofollow')->header('Referrer-Policy', 'no-referrer');
     }
 
+    /** The same report as a PDF, for the WhatsApp attachment. Fetching it is not counted as a view (gateways fetch it). */
+    public function pdf(string $token)
+    {
+        $report = WebsiteReport::where('share_token', $token)->with('company')->firstOrFail();
+        abort_unless($report->company, 404);
+
+        return app(WebsiteReportController::class)->pdfResponse($report->company, $report)->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
     public function seen(Request $request, string $token)
     {
         $report = WebsiteReport::where('share_token', $token)->first();

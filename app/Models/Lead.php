@@ -163,6 +163,11 @@ class Lead extends Model
         return true;
     }
 
+    public function whatsappMessages(): HasMany
+    {
+        return $this->hasMany(WhatsappMessage::class);
+    }
+
     public function scores(): HasMany
     {
         return $this->hasMany(LeadScore::class);

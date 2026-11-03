@@ -33,6 +33,7 @@ Route::post('/webhooks/{provider}', [WebhookController::class, 'handle'])->name(
 
 // The website report a prospect opens from our e-mail (private token link, no login)
 Route::get('/r/{token}', [\App\Http\Controllers\ReportShareController::class, 'show'])->name('reports.public')->where('token', '[A-Za-z0-9]{32,64}')->middleware('throttle:60,1');
+Route::get('/r/{token}.pdf', [\App\Http\Controllers\ReportShareController::class, 'pdf'])->name('reports.public.pdf')->where('token', '[A-Za-z0-9]{32,64}')->middleware('throttle:30,1');
 Route::post('/r/{token}/seen', [\App\Http\Controllers\ReportShareController::class, 'seen'])->name('reports.public.seen')->where('token', '[A-Za-z0-9]{32,64}')->middleware('throttle:20,1');
 
 // Authenticated Application Routes

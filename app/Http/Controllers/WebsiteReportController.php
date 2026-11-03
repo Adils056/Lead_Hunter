@@ -38,6 +38,13 @@ class WebsiteReportController extends Controller
         $this->authorize('view', $company);
         $report = $company->latestWebsiteReport;
         abort_unless($report, 404);
+
+        return $this->pdfResponse($company, $report);
+    }
+
+    /** The report as a PDF download (also what the prospect's WhatsApp message attaches, via the private link). */
+    public function pdfResponse(Company $company, $report)
+    {
         $options = new Options();
         $options->set('isRemoteEnabled', false); // never fetch anything while rendering
         $options->set('defaultFont', 'DejaVu Sans');

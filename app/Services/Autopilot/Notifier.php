@@ -95,6 +95,18 @@ class Notifier
             }
         }
 
+        // the team's own WhatsApp gateway (EZIMK), when its keys are set
+        $gateway = app(\App\Services\Outreach\WhatsappGateway::class);
+        $mobile = \App\Support\Phone::international($user->phone, null);
+        if ($gateway->isConfigured()) {
+            if (!$mobile) {
+                $record('whatsapp', 'skipped', 'No phone in international format (+92…) on this user\'s profile.');
+            } else {
+                $res = $gateway->send($mobile, mb_substr($text, 0, 1500));
+                $res['ok'] ? $record('whatsapp', 'accepted_by_provider') : $record('whatsapp', 'failed', 'HTTP ' . ($res['status'] ?? '-') . ' ' . $res['response']);
+            }
+        }
+
         $tw = (array) ($cfg['twilio'] ?? []);
         $phone = preg_replace('/[^\d+]/', '', (string) $user->phone);
         if (!empty($tw['sid']) && !empty($tw['token']) && !empty($tw['from'])) {
