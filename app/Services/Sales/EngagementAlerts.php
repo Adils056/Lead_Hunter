@@ -40,9 +40,10 @@ class EngagementAlerts
     }
 
     /** The prospect answered our WhatsApp. One alert per lead per hour, however many messages they send. */
-    public function whatsappReplied(Lead $lead, string $text, \App\Models\WhatsappInboundMessage $in): void
+    public function whatsappReplied(Lead $lead, string $text, \App\Models\WhatsappInboundMessage $in, array $done = []): void
     {
         $who = $this->who($lead);
+        $already = $done ? ' LeadPilot already followed up: ' . implode(' ', $done) : '';
         $this->task($lead, 'Replied on WhatsApp: answer now');
         $this->notifyOwner($lead, [
             'title' => "{$who} replied on WhatsApp: answer now",
@@ -50,9 +51,9 @@ class EngagementAlerts
             'what' => 'They wrote: "' . mb_substr(trim(preg_replace('/\s+/', ' ', $text)), 0, 280) . '"',
             'why' => 'They answered the message with their website report. An answer within the hour is the best chance of a meeting.',
             'affected' => $who,
-            'recommended' => "Answer on WhatsApp (+{$in->from_number})",
+            'recommended' => "Answer on WhatsApp (+{$in->from_number})." . $already,
             'url' => route('leads.show', $lead),
-            'short' => "LeadPilot: {$who} replied on WhatsApp: \"" . mb_substr(trim($text), 0, 120) . "\". Answer now: https://wa.me/{$in->from_number}",
+            'short' => "LeadPilot: {$who} replied on WhatsApp: \"" . mb_substr(trim($text), 0, 120) . "\". Answer now: https://wa.me/{$in->from_number}" . $already,
         ], 'whatsapp-reply:' . $lead->id . ':' . now()->format('YmdH'));
     }
 

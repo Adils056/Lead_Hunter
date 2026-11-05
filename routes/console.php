@@ -397,6 +397,24 @@ Artisan::command('leadpilot:whatsapp-reclassify {--dry-run : Show what would cha
     $this->info(($dry ? 'Would mark ' : 'Marked ') . count($rows) . ' message(s) as auto-greetings.' . ($dry ? ' Run without --dry-run to apply.' : ' Run leadpilot:win-ladder to refresh the rungs.'));
 })->purpose('Re-check stored WhatsApp replies and undo the ones that were automatic greetings');
 
+Artisan::command('leadpilot:whatsapp-referrals {--dry-run : List what would be contacted without sending}', function (\App\Services\Outreach\WhatsappReferral $referral) {
+    // Replies stored before LeadPilot acted on them that carry an e-mail address or number: contact them now (each once)
+    $rows = [];
+    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->whereNotNull('lead_id')->oldest()->get() as $in) {
+        $found = \App\Services\Outreach\WhatsappReferral::extract($in->body);
+        if (!$found['emails'] && !$found['phones']) {
+            continue;
+        }
+        $done = $this->option('dry-run') ? ['would contact: ' . implode(', ', array_merge($found['emails'], $found['phones']))] : $referral->handle($in, $in->lead);
+        if (!$this->option('dry-run') && $done) {
+            \App\Models\AuditLog::record('whatsapp_referral', $in->lead, null, ['inbound_id' => $in->id, 'done' => $done]);
+        }
+        $rows[] = [$in->lead?->company?->name ?? '–', implode(' ', $done)];
+    }
+    $this->table(['Business', 'Result'], $rows);
+    $this->info(count($rows) . ' reply(ies) with an address or number.');
+})->purpose('Contact the e-mail addresses and numbers prospects gave in WhatsApp replies stored earlier (each once)');
+
 Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
     // The free website & competitor report goes into the first e-mail as a link, so build it ahead of time for the
     // companies closest to an e-mail (rungs A and B), from audits already done. No AI unless --ai: the report reads

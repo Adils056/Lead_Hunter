@@ -143,7 +143,12 @@ class WhatsappInbox
             app(ReplyOutcomeService::class)->stopSequences($lead, 'Replied on WhatsApp');
             $lead->moveStage('replied');
             AuditLog::record('whatsapp_reply', $lead, null, ['from' => $m['from'], 'inbound_id' => $in->id]);
-            app(EngagementAlerts::class)->whatsappReplied($lead, (string) $m['body'], $in);
+            // an address or number in the answer is where they want us to continue: do it now
+            $done = app(WhatsappReferral::class)->handle($in, $lead);
+            if ($done) {
+                AuditLog::record('whatsapp_referral', $lead, null, ['inbound_id' => $in->id, 'done' => $done]);
+            }
+            app(EngagementAlerts::class)->whatsappReplied($lead, (string) $m['body'], $in, $done);
         }
 
         return $in;
