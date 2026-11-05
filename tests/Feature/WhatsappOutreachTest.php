@@ -284,6 +284,66 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame([1, 0, 1, 0], [$wa['sent']['all'], $wa['businesses_replied']['all'], $wa['auto_greetings']['all'], $wa['asked_to_stop']['all']]);
     }
 
+    public function test_an_address_or_number_given_in_a_reply_is_contacted_at_once_and_only_once(): void
+    {
+        [$me, $lead] = $this->market();
+        app(\App\Services\Audit\WebsiteReportService::class)->generate($me, null, 0, false);
+        app(WhatsappOutreach::class)->run();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+        $mails = fn () => collect(app('mail.manager')->mailer('array')->getSymfonyTransport()->messages()->all())
+            ->filter(fn ($m) => collect($m->getOriginalMessage()->getTo())->contains(fn ($a) => $a->getAddress() === 'j.altaher@ais.sch.sa'))->values();
+
+        $this->post($url, ['from' => '923001234567', 'message' => 'Please write to J.Altaher@ais.sch.sa or WhatsApp our manager 0321 7654321'])->assertJson(['action' => 'reply']);
+
+        // the e-mail: sent to the address they gave, with the observation and the report, and logged so its reply is matched
+        $this->assertCount(1, $mails());
+        $sentMail = $mails()->first()->getOriginalMessage();
+        $this->assertStringContainsString('as discussed on WhatsApp', $sentMail->getSubject());
+        $this->assertStringContainsString('where we were given this address', $sentMail->getTextBody());
+        $this->assertStringContainsString('/r/', $sentMail->getTextBody());
+        $ref = Lead::where('email', 'j.altaher@ais.sch.sa')->firstOrFail();
+        $this->assertSame([$me->id, 'replied', 'Given on WhatsApp'], [$ref->company_id, $ref->lifecycle_stage, $ref->source_name]);
+        $this->assertNotNull($ref->last_contacted_at);
+        $this->assertSame(1, \App\Models\EmailLog::where('recipient_email', 'j.altaher@ais.sch.sa')->whereNotNull('message_id')->count());
+
+        // the number: one WhatsApp with the report PDF
+        $wa = WhatsappMessage::where('number_source', 'given_in_reply')->firstOrFail();
+        $this->assertSame(['923217654321', 'sent'], [$wa->to_number, $wa->status]);
+        $this->assertStringEndsWith('.pdf', (string) $wa->file_url);
+        $this->assertStringContainsString('shared this number with us on WhatsApp', $wa->body);
+
+        // the salesperson's alert says what was already done
+        Http::assertSent(fn ($req) => collect($req->data())->pluck('contents', 'name')->get('to') === '923331112223'
+            && str_contains((string) collect($req->data())->pluck('contents', 'name')->get('message'), 'already followed up'));
+
+        // writing the same address again does not send a second e-mail or WhatsApp
+        $this->post($url, ['from' => '923001234567', 'message' => 'j.altaher@ais.sch.sa / 0321 7654321']);
+        $this->assertCount(1, $mails());
+        $this->assertSame(1, WhatsappMessage::where('number_source', 'given_in_reply')->count());
+    }
+
+    public function test_a_given_contact_is_left_to_people_when_policy_says_so_and_landlines_are_never_messaged(): void
+    {
+        $this->market();
+        app(WhatsappOutreach::class)->run();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+
+        $this->post($url, ['from' => '923001234567', 'message' => 'Call our office 042 35761234']);
+        $this->assertSame(0, WhatsappMessage::where('number_source', 'given_in_reply')->count(), 'a landline is not on WhatsApp');
+
+        app(AutonomyPolicyService::class)->set('reply.referral_contact', 'approval');
+        $this->post($url, ['from' => '923001234567', 'message' => 'mail us at office@smiledental.example']);
+        $this->assertSame(0, Lead::where('email', 'office@smiledental.example')->count());
+        $this->assertSame(['emails' => ['a@b.co'], 'phones' => ['+92 300 1234567']], \App\Services\Outreach\WhatsappReferral::extract('write a@b.co. or +92 300 1234567'));
+
+        // replies stored before this existed are followed up by the command, once
+        app(AutonomyPolicyService::class)->set('reply.referral_contact', 'automatic');
+        $this->artisan('leadpilot:whatsapp-referrals', ['--dry-run' => true])->expectsOutputToContain('would contact: office@smiledental.example')->assertExitCode(0);
+        $this->assertSame(0, Lead::where('email', 'office@smiledental.example')->count());
+        $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('office@smiledental.example: e-mailed')->assertExitCode(0);
+        $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('already contacted before')->assertExitCode(0);
+    }
+
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
     {
         $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);

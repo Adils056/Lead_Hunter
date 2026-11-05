@@ -295,6 +295,7 @@ return [
         'drafting.ai' => 'automatic',             // LLM polish (counts toward AI budget)
         'outreach.first_touch' => 'approval',     // SAFE DEFAULT: a human approves each first email
         'outreach.follow_up' => 'automatic',      // follow-ups of an approved thread, stop on any reply
+        'reply.referral_contact' => 'automatic',  // an e-mail or number given in a WhatsApp reply is contacted at once, once
         'outreach.whatsapp' => 'automatic',       // one WhatsApp per company with the report PDF (only when WHATSAPP_OUTREACH=true)
         'reply.classify' => 'automatic',
         'reply.auto_respond' => 'prohibited',     // replies to humans are always reviewed

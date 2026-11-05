@@ -127,12 +127,17 @@ class ReplySyncService
         $refs = $m->referencedIds();
         $rec = $refs ? CampaignRecipient::whereIn('rfc_message_id', $refs)->latest('id')->first() : null;
         $lead = $rec?->lead;
+        if (!$lead && $refs) {
+            // a reply to a one-off e-mail (e.g. to an address a prospect gave us on WhatsApp), logged in email_logs
+            $lead = ($lid = \App\Models\EmailLog::where('direction', 'outbound')->whereIn('message_id', $refs)->value('lead_id')) ? Lead::find($lid) : null;
+        }
         if (!$lead) {
             // Sender-only match (no thread headers): only trust it when the sender was not shown to be forged.
             if ($m->senderAuthenticated() === false) {
                 return 'ignored';
             }
-            $lead = Lead::where('email', $from)->whereHas('campaignRecipients', fn ($q) => $q->whereNotNull('sent_at')->where('sent_at', '>=', now()->subDays(90)))->first();
+            $lead = Lead::where('email', $from)->whereHas('campaignRecipients', fn ($q) => $q->whereNotNull('sent_at')->where('sent_at', '>=', now()->subDays(90)))->first()
+                ?? Lead::where('email', $from)->whereHas('emailLogs', fn ($q) => $q->where('direction', 'outbound')->where('occurred_at', '>=', now()->subDays(90)))->first();
             $rec = $lead ? CampaignRecipient::where('lead_id', $lead->id)->whereNotNull('sent_at')->latest('sent_at')->first() : null;
         }
         if (!$lead) {

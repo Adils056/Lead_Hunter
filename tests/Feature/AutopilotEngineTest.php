@@ -243,6 +243,19 @@ class AutopilotEngineTest extends TestCase
         };
     }
 
+    public function test_a_reply_to_a_one_off_email_logged_in_email_logs_is_matched(): void
+    {
+        config(['leadpilot.imap' => ['enabled' => true, 'host' => 'imap.test', 'port' => 993, 'username' => 'ismail@eziline.test', 'password' => 'app-pass', 'mailbox' => 'INBOX']]);
+        $lead = Lead::create(['full_name' => 'School — address given on WhatsApp', 'email' => 'j.altaher@ais.test', 'contact_status' => 'generic_inbox', 'lifecycle_stage' => 'replied']);
+        \App\Models\EmailLog::create(['lead_id' => $lead->id, 'direction' => 'outbound', 'provider' => 'smtp', 'message_id' => 'wa-ref-1@eziline.test', 'sender_email' => 'ismail@eziline.test',
+            'recipient_email' => $lead->email, 'subject' => 'report', 'status' => 'sent', 'occurred_at' => now()->subHour()]);
+        $reply = "From: J Altaher <j.altaher@ais.test>\r\nTo: ismail@eziline.test\r\nSubject: Re: report\r\nMessage-ID: <r-9@ais.test>\r\nIn-Reply-To: <wa-ref-1@eziline.test>\r\nContent-Type: text/plain\r\n\r\nYes, please call me on Sunday.\r\n";
+
+        $res = (new ReplySyncService($this->scriptedImap([201 => $reply])))->sync();
+        $this->assertNull($res['error'], (string) $res['error']);
+        $this->assertSame($lead->id, \App\Models\InboundReply::where('message_id', 'r-9@ais.test')->value('lead_id'));
+    }
+
     public function test_imap_sync_matches_replies_by_thread_detects_bounces_and_is_idempotent(): void
     {
         config(['leadpilot.imap' => ['enabled' => true, 'host' => 'imap.test', 'port' => 993, 'username' => 'ismail@eziline.test', 'password' => 'app-pass', 'mailbox' => 'INBOX']]);
