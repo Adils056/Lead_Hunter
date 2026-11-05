@@ -252,6 +252,14 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
         $this->assertSame(0, $alerts());
 
+        // a greeting that says where enquiries go (as Alton Fencing's did) is still a greeting, but the address it gives is followed up
+        $this->post($url, ['from' => '923001234567', 'message' => 'Thank you for contact :*Smile Dental# Please let us know how can I help you ? Any inq. Pls fwd - enquiries@smiledental.example, 0321 7654321'])
+            ->assertJson(['action' => 'auto_reply']);
+        $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
+        $this->assertSame(0, $alerts());
+        $this->assertNotNull(Lead::where('email', 'enquiries@smiledental.example')->value('last_contacted_at'), 'the enquiries address got the e-mail');
+        $this->assertSame('923217654321', WhatsappMessage::where('number_source', 'given_in_reply')->value('to_number'));
+
         // a person who writes back after the greeting is a reply; an address to write to always is
         $this->post($url, ['from' => '923001234567', 'message' => 'j.altaher@ais.sch.sa'])->assertJson(['action' => 'reply']);
         $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
