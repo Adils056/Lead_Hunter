@@ -236,6 +236,54 @@ class WhatsappOutreachTest extends TestCase
         }
     }
 
+    public function test_an_automatic_whatsapp_business_greeting_is_not_a_reply(): void
+    {
+        [, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+        $alerts = fn () => collect(Http::recorded())->filter(fn ($p) => collect($p[0]->data())->pluck('contents', 'name')->get('to') === '923331112223')->count();
+
+        foreach (['Thank you for contacting Smile Dental! Please let us know how we can help you.',
+            'أهلًا بك في مدارس بواكير الأهلية 🌷 للرد استفساركم تفضل بإرسال كلمة: ابدأ',
+            'Dear Parents, Thank you for your interest in Capital School.'] as $greeting) {
+            $this->post($url, ['from' => '923001234567', 'message' => $greeting])->assertJson(['action' => 'auto_reply']);
+        }
+        $this->assertSame('contacted', $lead->fresh()->lifecycle_stage, 'a machine answering is not a conversation');
+        $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
+        $this->assertSame(0, $alerts());
+
+        // a person who writes back after the greeting is a reply; an address to write to always is
+        $this->post($url, ['from' => '923001234567', 'message' => 'j.altaher@ais.sch.sa'])->assertJson(['action' => 'reply']);
+        $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
+        $this->assertSame(1, $alerts());
+        foreach (['Thank you for your kind interest', 'Who is this?', 'Please call me at 0300 1234567'] as $human) {
+            $this->assertFalse(\App\Services\Outreach\WhatsappInbox::isAutoReply($human), $human);
+        }
+    }
+
+    public function test_greetings_counted_as_replies_before_the_fix_are_put_back(): void
+    {
+        [$me, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $sent = WhatsappMessage::firstOrFail();
+        // as stored by the earlier version: a greeting recorded as a reply, the lead moved on, a task made
+        \App\Models\WhatsappInboundMessage::create(['from_number' => '923001234567', 'body' => 'Thank you for contacting Smile Dental! Please let us know how we can help you.',
+            'lead_id' => $lead->id, 'whatsapp_message_id' => $sent->id, 'action' => 'reply']);
+        $lead->moveStage('replied');
+        \App\Models\Task::create(['lead_id' => $lead->id, 'company_id' => $me->id, 'title' => 'Replied on WhatsApp: answer now', 'status' => 'pending', 'assigned_to' => $this->admin->id, 'priority' => 'high', 'due_date' => now()->toDateString()]);
+
+        $this->artisan('leadpilot:whatsapp-reclassify', ['--dry-run' => true])->expectsOutputToContain('Would mark 1 message')->assertExitCode(0);
+        $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
+
+        $this->artisan('leadpilot:whatsapp-reclassify')->expectsOutputToContain('Marked 1 message')->assertExitCode(0);
+        $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
+        $this->assertSame('auto_reply', \App\Models\WhatsappInboundMessage::first()->action);
+        $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
+
+        $wa = app(\App\Console\Commands\SalesReportCommand::class)->build(7, app(\App\Services\Outreach\WeeklyReview::class))['whatsapp'];
+        $this->assertSame([1, 0, 1, 0], [$wa['sent']['all'], $wa['businesses_replied']['all'], $wa['auto_greetings']['all'], $wa['asked_to_stop']['all']]);
+    }
+
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
     {
         $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);

@@ -42,6 +42,7 @@ class SalesReportCommand extends Command
         $this->table(['Evidence segment', 'Emailed', 'Replied', 'Interested', 'Your reply %', 'Benchmark reply %', 'Verdict'],
             array_map(fn ($s) => [$s['label'], $s['sent'], $s['replied'], $s['interested'], $s['reply_rate'] ?? '–', $s['benchmark_reply'], $s['verdict']], $r['segments']));
         $this->table(['Source', 'Leads', 'Emailed', 'Replied', 'Won'], array_map(fn ($s) => [$s['source'], $s['leads'], $s['emailed'], $s['replied'], $s['won']], $r['by_source']));
+        $this->table(['WhatsApp', 'All time', "Last {$r['days']} days"], collect($r['whatsapp'])->map(fn ($v, $k) => [str_replace('_', ' ', $k), $v['all'] . (str_contains($k, 'rate') ? '%' : ''), $v['recent'] . (str_contains($k, 'rate') ? '%' : '')])->values()->all());
         $this->table(['Other', 'Value'], collect($r['other'])->map(fn ($v, $k) => [str_replace('_', ' ', $k), is_array($v) ? json_encode($v) : $v])->values()->all());
 
         return 0;
@@ -136,6 +137,7 @@ class SalesReportCommand extends Command
                 'replies_from_A_B' => round((float) (clone $ab)->sum('win_reply_chance') / 100, 1)],
             'segments' => $review->build()['segments'],
             'by_source' => $sources,
+            'whatsapp' => $this->whatsapp($since),
             'other' => [
                 'emails_sent_total' => $all['sent'], 'bounce_rate_pct' => $all['bounce_rate'],
                 'won_deal_value' => (float) Deal::whereIn('stage', ['won', 'closed_won'])->sum('value'),
@@ -145,6 +147,26 @@ class SalesReportCommand extends Command
                 'outreach_mode' => \App\Models\OutreachSetting::current()->mode,
             ],
         ];
+    }
+
+    /** WhatsApp outreach: sent, refused, businesses whose person answered, automatic greetings, and STOPs. */
+    protected function whatsapp($since): array
+    {
+        $out = [];
+        foreach (['all' => null, 'recent' => $since] as $k => $from) {
+            $msg = fn () => \App\Models\WhatsappMessage::query()->when($from, fn ($q) => $q->where('created_at', '>=', $from));
+            $in = fn (string $action) => \App\Models\WhatsappInboundMessage::where('action', $action)->when($from, fn ($q) => $q->where('created_at', '>=', $from));
+            $sent = $msg()->where('status', 'sent')->count();
+            $replied = $in('reply')->whereNotNull('lead_id')->distinct()->count('lead_id');
+            $out['sent'][$k] = $sent;
+            $out['refused_by_gateway'][$k] = $msg()->where('status', 'failed')->count();
+            $out['businesses_replied'][$k] = $replied;
+            $out['auto_greetings'][$k] = $in('auto_reply')->count();
+            $out['asked_to_stop'][$k] = $in('opt_out')->count();
+            $out['reply_rate'][$k] = $sent ? round(100 * $replied / $sent, 1) : 0;
+        }
+
+        return $out;
     }
 
     /** Leads marked won, or with a won deal. */

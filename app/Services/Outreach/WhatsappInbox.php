@@ -22,6 +22,31 @@ class WhatsappInbox
 {
     protected const OPT_OUT = '/\b(stop|unsubscribe|opt[\s-]?out|remove me|do not (message|contact)|don\'?t (message|contact)|band karo|mat bhejo|mat bhejain)\b/i';
 
+    /**
+     * The greeting a WhatsApp Business account sends by itself to anyone who writes ("Thank you for contacting X!
+     * Please let us know how we can help you", "Welcome to...", "Dear Parents...", the Arabic "أهلًا بك"). It is not
+     * a person answering, so it must not move the lead, stop its e-mails or alert anyone.
+     */
+    protected const AUTO_REPLY = '/(thanks?|thank\s*you)\s+for\s+(contact|reach|your\s+message|messag|getting\s+in\s+touch|writing)'
+        . '|please\s+let\s+(us|me)\s+know\s+how|how\s+(can|may)\s+(we|i)\s+(help|assist)|\bwelcome\s+to\b|\bdear\s+(parents|customer|client|valued)'
+        . '|admissions?\s+office|our\s+team\s+will|we\s+will\s+(get\s+back|respond|reply|contact)|will\s+get\s+back\s+to\s+you|out\s+of\s+(the\s+)?office'
+        . '|(office|working|business|opening)\s+hours|this\s+is\s+an\s+automated|auto[\s-]?reply'
+        . '|أهل[اًًا]*\s*بك|مرحب[اًا]*\s*بك|شكر[اًا]*\s*(لك\s*)?(على\s*)?تواصل|تفضل\s*بإرسال/iu';
+
+    public static function isAutoReply(?string $text): bool
+    {
+        $text = trim((string) $text);
+        if ($text === '') {
+            return false;
+        }
+        // an address or number to write to is worth a person's look, whoever typed it
+        if (preg_match('/[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d\s-]{8,}\d/u', $text) && mb_strlen($text) < 200) {
+            return false;
+        }
+
+        return preg_match(self::AUTO_REPLY, $text) === 1;
+    }
+
     /** The secret part of the webhook URL (WHATSAPP_WEBHOOK_TOKEN, else derived from APP_KEY so no setup is needed). */
     public static function token(): string
     {
@@ -105,6 +130,7 @@ class WhatsappInbox
             $m['from_me'] || !$m['from'] => 'ignored',
             !$sent => 'unmatched',
             self::isOptOut($m['body']) => 'opt_out',
+            self::isAutoReply($m['body']) => 'auto_reply',
             default => 'reply',
         };
         $in = WhatsappInboundMessage::create(['provider_message_id' => $m['id'], 'from_number' => $m['from'], 'body' => $m['body'] !== null ? mb_substr($m['body'], 0, 5000) : null,
