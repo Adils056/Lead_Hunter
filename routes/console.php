@@ -369,6 +369,34 @@ Artisan::command('leadpilot:whatsapp-webhook-url', function () {
     $this->line(\App\Services\Outreach\WhatsappInbox::webhookUrl());
 })->purpose('The URL to paste into EZIMK (device → Webhook Url) for incoming WhatsApp replies');
 
+Artisan::command('leadpilot:whatsapp-reclassify {--dry-run : Show what would change without changing it}', function () {
+    // WhatsApp Business greetings ("Thank you for contacting X!...") received before auto-replies were recognised were
+    // counted as replies: the lead moved to "replied" and an "answer now" task was made. Put those leads back.
+    $rows = [];
+    $dry = (bool) $this->option('dry-run');
+    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->get() as $in) {
+        if (!\App\Services\Outreach\WhatsappInbox::isAutoReply($in->body)) {
+            continue;
+        }
+        $lead = $in->lead;
+        $reset = $lead && $lead->lifecycle_stage === 'replied'
+            && !\App\Models\WhatsappInboundMessage::where('lead_id', $lead->id)->where('action', 'reply')->whereKeyNot($in->id)
+                ->get()->contains(fn ($o) => !\App\Services\Outreach\WhatsappInbox::isAutoReply($o->body))
+            && !\App\Models\InboundReply::where('lead_id', $lead->id)->get(['category', 'classification'])
+                ->contains(fn ($x) => !in_array($x->category ?? $x->classification, \App\Support\OutreachMetrics::NOT_A_REPLY, true));
+        if (!$dry) {
+            $in->update(['action' => 'auto_reply']);
+            if ($reset) {
+                $lead->forceFill(['lifecycle_stage' => 'contacted'])->save();
+                \App\Models\Task::where('lead_id', $lead->id)->where('title', 'Replied on WhatsApp: answer now')->where('status', 'pending')->delete();
+            }
+        }
+        $rows[] = [$lead?->company?->name ?? '–', mb_substr((string) preg_replace('/\s+/', ' ', (string) $in->body), 0, 60), $reset ? 'replied → contacted' : 'unchanged'];
+    }
+    $this->table(['Business', 'Auto-greeting', 'Lead stage'], $rows);
+    $this->info(($dry ? 'Would mark ' : 'Marked ') . count($rows) . ' message(s) as auto-greetings.' . ($dry ? ' Run without --dry-run to apply.' : ' Run leadpilot:win-ladder to refresh the rungs.'));
+})->purpose('Re-check stored WhatsApp replies and undo the ones that were automatic greetings');
+
 Artisan::command('leadpilot:build-reports {--limit=20 : Companies to build} {--seconds=300 : Stop after this many seconds} {--ai : Add the AI summary (uses the AI budget)}', function (\App\Services\Audit\WebsiteReportService $reports) {
     // The free website & competitor report goes into the first e-mail as a link, so build it ahead of time for the
     // companies closest to an e-mail (rungs A and B), from audits already done. No AI unless --ai: the report reads
