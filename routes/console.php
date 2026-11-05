@@ -400,7 +400,7 @@ Artisan::command('leadpilot:whatsapp-reclassify {--dry-run : Show what would cha
 Artisan::command('leadpilot:whatsapp-referrals {--dry-run : List what would be contacted without sending}', function (\App\Services\Outreach\WhatsappReferral $referral) {
     // Replies stored before LeadPilot acted on them that carry an e-mail address or number: contact them now (each once)
     $rows = [];
-    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->whereNotNull('lead_id')->oldest()->get() as $in) {
+    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->whereIn('action', ['reply', 'auto_reply'])->whereNotNull('lead_id')->oldest()->get() as $in) {
         $found = \App\Services\Outreach\WhatsappReferral::extract($in->body);
         if (!$found['emails'] && !$found['phones']) {
             continue;

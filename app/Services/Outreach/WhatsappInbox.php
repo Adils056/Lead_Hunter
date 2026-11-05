@@ -39,11 +39,6 @@ class WhatsappInbox
         if ($text === '') {
             return false;
         }
-        // an address or number to write to is worth a person's look, whoever typed it
-        if (preg_match('/[\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d\s-]{8,}\d/u', $text) && mb_strlen($text) < 200) {
-            return false;
-        }
-
         return preg_match(self::AUTO_REPLY, $text) === 1;
     }
 
@@ -149,6 +144,11 @@ class WhatsappInbox
                 AuditLog::record('whatsapp_referral', $lead, null, ['inbound_id' => $in->id, 'done' => $done]);
             }
             app(EngagementAlerts::class)->whatsappReplied($lead, (string) $m['body'], $in, $done);
+        } elseif ($action === 'auto_reply' && $lead) {
+            // a greeting that says where enquiries go ("Any inq. pls fwd info@... / 00971...") is still followed up
+            if ($done = app(WhatsappReferral::class)->handle($in, $lead)) {
+                AuditLog::record('whatsapp_referral', $lead, null, ['inbound_id' => $in->id, 'done' => $done]);
+            }
         }
 
         return $in;
