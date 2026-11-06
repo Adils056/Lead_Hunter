@@ -6,6 +6,8 @@
         'discovery.free' => 'Search free sources (OpenStreetMap, tenders, job boards)', 'discovery.paid' => 'Search paid sources (Google Places, Apollo) within budget',
         'enrichment.audit' => 'Audit prospect websites', 'enrichment.verify_email' => 'Verify emails (free DNS; Hunter within budget)', 'scoring.run' => 'Score & qualify leads',
         'drafting.ai' => 'Polish drafts with AI (facts-only guard)', 'outreach.first_touch' => 'Send the FIRST email to a new prospect', 'outreach.follow_up' => 'Send follow-ups in an approved thread (stops on any reply)',
+        'outreach.whatsapp' => 'Send one WhatsApp per business with its website report (only when WHATSAPP_OUTREACH=true)',
+        'reply.referral_contact' => 'Contact an e-mail or number a prospect gives in a WhatsApp reply (once each)',
         'reply.classify' => 'Read & classify replies', 'reply.auto_respond' => 'Answer prospect replies without review', 'crm.stage_update' => 'Move CRM stages from evidence',
         'meeting.propose_slots' => 'Offer meeting times', 'proposal.send' => 'Send a proposal (commercial)', 'integration.enable' => 'Enable a new integration', 'spend.over_budget' => 'Spend beyond budget',
     ];
