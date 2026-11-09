@@ -162,6 +162,7 @@ class SalesReportCommand extends Command
             $out['refused_by_gateway'][$k] = $msg()->where('status', 'failed')->count();
             $out['businesses_replied'][$k] = $replied;
             $out['auto_greetings'][$k] = $in('auto_reply')->count();
+            $out['wrong_number'][$k] = $in('wrong_number')->count();
             $out['asked_to_stop'][$k] = $in('opt_out')->count();
             $out['reply_rate'][$k] = $sent ? round(100 * $replied / $sent, 1) : 0;
         }

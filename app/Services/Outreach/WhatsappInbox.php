@@ -31,7 +31,14 @@ class WhatsappInbox
         . '|please\s+let\s+(us|me)\s+know\s+how|how\s+(can|may)\s+(we|i)\s+(help|assist)|\bwelcome\s+to\b|\bdear\s+(parents|customer|client|valued)'
         . '|admissions?\s+office|our\s+team\s+will|we\s+will\s+(get\s+back|respond|reply|contact)|will\s+get\s+back\s+to\s+you|out\s+of\s+(the\s+)?office'
         . '|(office|working|business|opening)\s+hours|this\s+is\s+an\s+automated|auto[\s-]?reply'
+        // away messages: "We're unavailable right now, but will respond as soon as possible. Please contact between 12pm..."
+        . '|\bunavailable\b|(we\s+are|we[\'’]re)\s+(currently\s+)?(closed|away|offline|busy)|will\s+(respond|reply|revert)\s+(to\s+you\s+)?(as\s+soon|shortly|soon)'
+        . '|please\s+contact\s+(us\s+)?(between|during|from)\s'
         . '|أهل[اًًا]*\s*بك|مرحب[اًا]*\s*بك|شكر[اًا]*\s*(لك\s*)?(على\s*)?تواصل|تفضل\s*بإرسال/iu';
+
+    /** "Sorry, this number changed", "wrong number": a person, but not the business we wrote to. */
+    protected const WRONG_NUMBER = '/wrong\s+number|number\s+(has\s+been\s+|has\s+|is\s+|was\s+)?chang|this\s+number\s+(is\s+)?(no\s+longer|not)\s'
+        . '|not\s+(my|our|the\s+right|the\s+correct)\s+number|no\s+longer\s+(use|using|with)\b|galat\s+number|number\s+badal/iu';
 
     public static function isAutoReply(?string $text): bool
     {
@@ -39,7 +46,29 @@ class WhatsappInbox
         if ($text === '') {
             return false;
         }
-        return preg_match(self::AUTO_REPLY, $text) === 1;
+        if (preg_match(self::AUTO_REPLY, $text) === 1) {
+            return true;
+        }
+        // a business's own broadcast or advert (State Life's "🌟 ... PLAN 🌟 📌 ..."): long and full of emoji
+        if (mb_strlen($text) >= 120 && preg_match_all('/[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]/u', $text) >= 3) {
+            return true;
+        }
+        // a sales script asking us to fill in a form ("Good Name, Contact Number, Date of Birth, City..."): 3+ form fields
+        preg_match_all('/\b(name|contact\s+(no|number)|phone\s+number|date\s+of\s+birth|dob|cnic|city|age|ages|address|occupation|income|saving)\b/i', $text, $f);
+
+        return count(array_unique(array_map('strtolower', $f[0]))) >= 4;
+    }
+
+    public static function isWrongNumber(?string $text): bool
+    {
+        $text = trim((string) $text);
+
+        // "our number changed, call 0321..." gives the new contact: that is a reply, and the new number is followed up
+        if ($text === '' || preg_match('/[\w.+-]+@[\w-]+\.[\w.]+|\d[\d\s-]{8,}\d/u', $text)) {
+            return false;
+        }
+
+        return mb_strlen($text) <= 160 && preg_match(self::WRONG_NUMBER, $text) === 1;
     }
 
     /** The secret part of the webhook URL (WHATSAPP_WEBHOOK_TOKEN, else derived from APP_KEY so no setup is needed). */
@@ -125,6 +154,7 @@ class WhatsappInbox
             $m['from_me'] || !$m['from'] => 'ignored',
             !$sent => 'unmatched',
             self::isOptOut($m['body']) => 'opt_out',
+            self::isWrongNumber($m['body']) => 'wrong_number',
             self::isAutoReply($m['body']) => 'auto_reply',
             default => 'reply',
         };
