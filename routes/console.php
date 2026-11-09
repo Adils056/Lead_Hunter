@@ -370,32 +370,37 @@ Artisan::command('leadpilot:whatsapp-webhook-url', function () {
 })->purpose('The URL to paste into EZIMK (device → Webhook Url) for incoming WhatsApp replies');
 
 Artisan::command('leadpilot:whatsapp-reclassify {--dry-run : Show what would change without changing it}', function () {
-    // WhatsApp Business greetings ("Thank you for contacting X!...") received before auto-replies were recognised were
-    // counted as replies: the lead moved to "replied" and an "answer now" task was made. Put those leads back.
+    // Messages stored as replies before LeadPilot recognised them: automatic greetings, away messages, a business's own
+    // adverts, and "this number changed". The lead moved to "replied" and an "answer now" task was made. Put those back.
     $rows = [];
     $dry = (bool) $this->option('dry-run');
-    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->get() as $in) {
-        if (!\App\Services\Outreach\WhatsappInbox::isAutoReply($in->body)) {
+    $Inbox = \App\Services\Outreach\WhatsappInbox::class;
+    $changed = [];
+    foreach (\App\Models\WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->orderBy('id')->get() as $in) {
+        $kind = $Inbox::isWrongNumber($in->body) ? 'wrong_number'
+            : ($Inbox::isAutoReply($in->body) ? 'auto_reply' : null);
+        if (!$kind) {
             continue;
         }
+        $changed[$in->id] = $kind;
         $lead = $in->lead;
         $reset = $lead && $lead->lifecycle_stage === 'replied'
-            && !\App\Models\WhatsappInboundMessage::where('lead_id', $lead->id)->where('action', 'reply')->whereKeyNot($in->id)
-                ->get()->contains(fn ($o) => !\App\Services\Outreach\WhatsappInbox::isAutoReply($o->body))
+            && !\App\Models\WhatsappInboundMessage::where('lead_id', $lead->id)->where('action', 'reply')->whereKeyNot($in->id)->get()
+                ->contains(fn ($o) => !isset($changed[$o->id]) && !$Inbox::isWrongNumber($o->body) && !$Inbox::isAutoReply($o->body))
             && !\App\Models\InboundReply::where('lead_id', $lead->id)->get(['category', 'classification'])
                 ->contains(fn ($x) => !in_array($x->category ?? $x->classification, \App\Support\OutreachMetrics::NOT_A_REPLY, true));
         if (!$dry) {
-            $in->update(['action' => 'auto_reply']);
+            $in->update(['action' => $kind]);
             if ($reset) {
                 $lead->forceFill(['lifecycle_stage' => 'contacted'])->save();
                 \App\Models\Task::where('lead_id', $lead->id)->where('title', 'Replied on WhatsApp: answer now')->where('status', 'pending')->delete();
             }
         }
-        $rows[] = [$lead?->company?->name ?? '–', mb_substr((string) preg_replace('/\s+/', ' ', (string) $in->body), 0, 60), $reset ? 'replied → contacted' : 'unchanged'];
+        $rows[] = [$lead?->company?->name ?? '–', $kind === 'wrong_number' ? 'wrong number' : 'automatic', mb_substr((string) preg_replace('/\s+/', ' ', (string) $in->body), 0, 60), $reset ? 'replied → contacted' : 'unchanged'];
     }
-    $this->table(['Business', 'Auto-greeting', 'Lead stage'], $rows);
-    $this->info(($dry ? 'Would mark ' : 'Marked ') . count($rows) . ' message(s) as auto-greetings.' . ($dry ? ' Run without --dry-run to apply.' : ' Run leadpilot:win-ladder to refresh the rungs.'));
-})->purpose('Re-check stored WhatsApp replies and undo the ones that were automatic greetings');
+    $this->table(['Business', 'Now counted as', 'Message', 'Lead stage'], $rows);
+    $this->info(($dry ? 'Would re-mark ' : 'Re-marked ') . count($rows) . ' message(s) that were not real replies.' . ($dry ? ' Run without --dry-run to apply.' : ' Run leadpilot:win-ladder to refresh the rungs.'));
+})->purpose('Re-check stored WhatsApp replies and undo the ones that were automatic messages or wrong numbers');
 
 Artisan::command('leadpilot:whatsapp-referrals {--dry-run : List what would be contacted without sending}', function (\App\Services\Outreach\WhatsappReferral $referral) {
     // Replies stored before LeadPilot acted on them that carry an e-mail address or number: contact them now (each once)

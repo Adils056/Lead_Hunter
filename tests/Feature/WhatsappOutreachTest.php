@@ -280,10 +280,10 @@ class WhatsappOutreachTest extends TestCase
         $lead->moveStage('replied');
         \App\Models\Task::create(['lead_id' => $lead->id, 'company_id' => $me->id, 'title' => 'Replied on WhatsApp: answer now', 'status' => 'pending', 'assigned_to' => $this->admin->id, 'priority' => 'high', 'due_date' => now()->toDateString()]);
 
-        $this->artisan('leadpilot:whatsapp-reclassify', ['--dry-run' => true])->expectsOutputToContain('Would mark 1 message')->assertExitCode(0);
+        $this->artisan('leadpilot:whatsapp-reclassify', ['--dry-run' => true])->expectsOutputToContain('Would re-mark 1 message')->assertExitCode(0);
         $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
 
-        $this->artisan('leadpilot:whatsapp-reclassify')->expectsOutputToContain('Marked 1 message')->assertExitCode(0);
+        $this->artisan('leadpilot:whatsapp-reclassify')->expectsOutputToContain('Re-marked 1 message')->assertExitCode(0);
         $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
         $this->assertSame('auto_reply', \App\Models\WhatsappInboundMessage::first()->action);
         $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
@@ -350,6 +350,46 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame(0, Lead::where('email', 'office@smiledental.example')->count());
         $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('office@smiledental.example: e-mailed')->assertExitCode(0);
         $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('already contacted before')->assertExitCode(0);
+    }
+
+    public function test_away_messages_adverts_and_wrong_numbers_are_not_counted_as_replies(): void
+    {
+        [, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+
+        // as seen on the server on 6 and 9 Nov
+        $this->post($url, ['from' => '923001234567', 'message' => 'We’re unavailable right now, but will respond as soon as possible. Please contact between 12:00pm till 8pm'])->assertJson(['action' => 'auto_reply']);
+        $this->post($url, ['from' => '923001234567', 'message' => '🌟STATE LIFE TAYYAB TAKAFUL ISLAMIC PLAN🌟 📌 Life Mein Backup Plan Zaroori Hai. 📌 Monthly saving plan with profit and life cover for the whole family'])->assertJson(['action' => 'auto_reply']);
+        // the business's own sales script asking us for our details
+        $this->post($url, ['from' => '923001234567', 'message' => 'Parsnol Information Sir. Good Name Contact Number Date of Birth Children Ages City Name Yearly Saving'])->assertJson(['action' => 'auto_reply']);
+        $this->post($url, ['from' => '923001234567', 'message' => 'Sorry sir this number change'])->assertJson(['action' => 'wrong_number']);
+        $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
+        $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
+
+        $wa = app(\App\Console\Commands\SalesReportCommand::class)->build(7, app(\App\Services\Outreach\WeeklyReview::class))['whatsapp'];
+        $this->assertSame([0, 3, 1], [$wa['businesses_replied']['all'], $wa['auto_greetings']['all'], $wa['wrong_number']['all']]);
+
+        // a new number given with the change is a reply, so the new number is followed up
+        $this->assertFalse(\App\Services\Outreach\WhatsappInbox::isWrongNumber('Our number has changed, please contact 0321 1112223'));
+        foreach (['Please share your name and contact number', 'Which city are you in? What would it cost?'] as $human) {
+            $this->assertFalse(\App\Services\Outreach\WhatsappInbox::isAutoReply($human), $human);
+        }
+    }
+
+    public function test_stored_away_messages_and_wrong_numbers_are_put_back(): void
+    {
+        [$me, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $sent = WhatsappMessage::firstOrFail();
+        foreach (['We’re unavailable right now, but will respond as soon as possible.', 'Parsnol Information Sir. Good Name Contact Number Date of Birth Children Ages City Name Yearly Saving'] as $i => $body) {
+            \App\Models\WhatsappInboundMessage::create(['from_number' => '923001234567', 'body' => $body, 'lead_id' => $lead->id, 'whatsapp_message_id' => $sent->id, 'action' => 'reply']);
+        }
+        $lead->moveStage('replied');
+
+        $this->artisan('leadpilot:whatsapp-reclassify')->expectsOutputToContain('Re-marked 2 message')->assertExitCode(0);
+        $this->assertSame(['auto_reply', 'auto_reply'], \App\Models\WhatsappInboundMessage::orderBy('id')->pluck('action')->all());
+        $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
     }
 
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
