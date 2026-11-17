@@ -392,6 +392,44 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame('contacted', $lead->fresh()->lifecycle_stage);
     }
 
+    public function test_the_whatsapp_screen_lists_conversations_and_a_person_can_correct_a_label(): void
+    {
+        [$me, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $msg = WhatsappMessage::firstOrFail();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+        $this->post($url, ['from' => '923001234567', 'message' => 'Thank you for contacting Smile Dental! Please let us know how we can help you.']);
+        $this->post($url, ['from' => '923119998887', 'message' => 'test from the team']);
+
+        $this->actingAs($this->admin)->get(route('whatsapp.index'))->assertOk()->assertSee('Smile Dental')->assertSee('Automatic')->assertSee('Real replies');
+        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'replies']))->assertOk()->assertDontSee('Smile Dental');
+        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'automatic']))->assertOk()->assertSee('Smile Dental');
+        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'other']))->assertOk()->assertSee('test from the team');
+        $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertOk()
+            ->assertSee('no viewport')->assertSee('Website &amp; competitor report (PDF)', false)->assertSee('Mark as real reply')->assertSee('wa.me/923001234567');
+        $this->actingAs($this->admin)->get(route('leads.show', $lead))->assertOk()->assertSee(route('whatsapp.show', $msg));
+
+        // the filter took a person for a machine: one click puts it right
+        $in = \App\Models\WhatsappInboundMessage::where('action', 'auto_reply')->firstOrFail();
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'reply'])->assertRedirect();
+        $this->assertSame(['reply', 'replied'], [$in->fresh()->action, $lead->fresh()->lifecycle_stage]);
+        $this->assertSame(1, \App\Models\Task::where('lead_id', $lead->id)->where('title', 'Replied on WhatsApp: answer now')->count());
+        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'replies']))->assertSee('Smile Dental');
+
+        // and back again
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'auto_reply'])->assertRedirect();
+        $this->assertSame(['auto_reply', 'contacted'], [$in->fresh()->action, $lead->fresh()->lifecycle_stage]);
+        $this->assertSame(0, \App\Models\Task::where('lead_id', $lead->id)->count());
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'opt_out'])->assertSessionHasErrors('action');
+
+        // a salesperson sees only the conversations of leads they may open
+        $other = User::factory()->create(['role' => 'sales', 'is_active' => true]);
+        $lead->update(['assigned_user_id' => $this->admin->id]);
+        $this->actingAs($other)->get(route('whatsapp.show', $msg))->assertForbidden();
+        $this->actingAs($other)->get(route('whatsapp.index'))->assertOk()->assertDontSee('Smile Dental');
+        $this->actingAs($other)->post(route('whatsapp.label', $in), ['action' => 'reply'])->assertForbidden();
+    }
+
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
     {
         $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);
