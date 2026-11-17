@@ -150,11 +150,19 @@ class SequenceEngine
         $cadence = array_map(fn ($d) => max((int) $d, $minDelay), (array) config('leadpilot.outreach.follow_up_days', [3, 4, 4, 5]));
         $max = $settings->maxTouches();
 
+        // Only messages that can still get a follow-up. Finished sequences, replied leads and stopped leads never get a
+        // child row, so if they were left in, they would stay the oldest rows forever, fill the window, and no follow-up
+        // would ever be planned again once enough sequences had ended.
         $sent = CampaignRecipient::with('lead.company', 'campaign')
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->whereIn('status', ['sent', 'delivered', 'opened'])
+            ->where('sequence_step', '<', $max)
             ->whereDoesntHave('children')
-            ->orderBy('sent_at')->limit($limit * 2)->get();
+            ->whereHas('lead', fn ($q) => $q->where(fn ($w) => $w->whereNull('pipeline_state')->orWhereNotIn('pipeline_state', ['suppressed', 'engaged', 'meeting_booked', 'won', 'lost'])))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('inbound_replies')->whereColumn('inbound_replies.lead_id', 'campaign_recipients.lead_id')
+                ->whereColumn('inbound_replies.received_at', '>=', 'campaign_recipients.sent_at')
+                ->where(fn ($w) => $w->whereNull('inbound_replies.category')->orWhere('inbound_replies.category', '!=', 'out_of_office')))
+            ->orderBy('sent_at')->limit($limit * 4)->get();
 
         foreach ($sent as $rec) {
             if ($out['created'] + $out['pending_approval'] >= $limit) {

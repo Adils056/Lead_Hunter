@@ -47,7 +47,8 @@ Artisan::command('leadpilot:dispatch-campaigns', function (CampaignDeliveryServi
                 $q->whereNull('scheduled_at')
                   ->orWhere('scheduled_at', '<=', now());
             })
-            ->limit($campaign->daily_limit - $campaign->sent_today)
+            // sent_today belongs to last_sent_date: on a new day the whole limit is free (it used to stay at 0 for ever)
+            ->limit(max(0, $campaign->daily_limit - ($campaign->last_sent_date?->isToday() ? $campaign->sent_today : 0)))
             ->get();
 
         $sequence = app(\App\Services\Outreach\SequenceEngine::class);
@@ -266,8 +267,8 @@ Artisan::command('leadpilot:autonomous-cycle', function (
 */
 // v4: superseded by AutopilotCycleJob (policy, approvals, budgets, incidents). Command kept for manual use.
 // Schedule::command('leadpilot:autonomous-cycle')->everyFifteenMinutes()->withoutOverlapping();
-Schedule::command('leadpilot:dispatch-campaigns')->everyTenMinutes()->withoutOverlapping();
-Schedule::command('leadpilot:score-leads')->hourly()->withoutOverlapping();
+Schedule::command('leadpilot:dispatch-campaigns')->everyTenMinutes()->withoutOverlapping(15); // a lock left by a killed run expires (default is 24 h)
+Schedule::command('leadpilot:score-leads')->hourly()->withoutOverlapping(60);
 // v4: discovery is allocated by the autopilot (SearchAllocator); manual: php artisan leadpilot:discover
 // Schedule::command('leadpilot:discover')->twiceDaily(9, 15)->withoutOverlapping();
 
@@ -965,7 +966,7 @@ Artisan::command('leadpilot:validate-live {--icp= : ICP id (default: first activ
 
 // ---- v4 schedule (business timezone)
 Schedule::command('leadpilot:heartbeat')->everyMinute()->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
-Schedule::job(new \App\Jobs\AutopilotCycleJob())->everyFifteenMinutes()->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping();
+Schedule::job(new \App\Jobs\AutopilotCycleJob())->everyFifteenMinutes()->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(20); // shared hosting may kill a run: its lock must not stop autopilot for a day
 Schedule::command('leadpilot:approvals-escalate')->everyThirtyMinutes()->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 
 Artisan::command('leadpilot:setup', function (\App\Services\Autopilot\HealthService $health) {
@@ -1033,6 +1034,10 @@ Schedule::command('leadpilot:find-people --limit=150 --seconds=900')->dailyAt('0
 foreach (['09:10', '15:10', '21:10'] as $at) {
     Schedule::command('leadpilot:find-people --limit=60 --seconds=540')->dailyAt($at)->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 }
+// one more try for messages lost to a passing mail-server or WhatsApp-gateway fault (see RetryFailedSendsCommand)
+Schedule::command('leadpilot:retry-failed')->hourlyAt(25)->withoutOverlapping(30)->runInBackground();
+// every morning except Sunday: who is waiting for an answer from us, to the team on WhatsApp / e-mail
+Schedule::command('leadpilot:waiting-digest')->days([1, 2, 3, 4, 5, 6])->at('09:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'));
 Schedule::command('leadpilot:whatsapp-outreach')->everyThirtyMinutes()->withoutOverlapping(25)->runInBackground();
 Schedule::command('leadpilot:build-reports --limit=25 --seconds=420')->dailyAt('05:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:build-reports --limit=15 --seconds=300')->dailyAt('12:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();

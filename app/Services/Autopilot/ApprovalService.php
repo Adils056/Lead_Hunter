@@ -341,6 +341,19 @@ class ApprovalService
                 throw new \RuntimeException("Not sent: {$why}");
             }
         }
+        // things may have changed while it waited for approval: the business answered, opted out or was e-mailed
+        $lead = $msg->lead;
+        $why = match (true) {
+            !$lead => 'the lead was deleted',
+            in_array($lead->lifecycle_stage, \App\Models\Lead::NO_COLD_EMAIL_STAGES, true) => "the lead is now \"{$lead->lifecycle_stage}\"",
+            \App\Services\Outreach\WhatsappInbox::optedOut($msg->to_number) => 'this number asked us to stop',
+            ($lead->email && \App\Models\Suppression::isSuppressed($lead->email, $lead->company?->domain)) => 'the business is suppressed',
+            default => null,
+        };
+        if ($why) {
+            $msg->update(['status' => 'rejected', 'provider_response' => "Not sent: {$why}"]);
+            throw new \RuntimeException("Not sent: {$why}.");
+        }
         $body = (string) ($req->payload['body'] ?? $msg->body);
         if (!app(\App\Services\Outreach\WhatsappOutreach::class)->deliver($msg, $body)) {
             throw new \RuntimeException('The WhatsApp gateway refused it: ' . mb_substr((string) $msg->fresh()->provider_response, 0, 300));

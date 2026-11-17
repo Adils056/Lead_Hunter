@@ -162,8 +162,14 @@ class MimeMessage
         };
         $charset = self::param($ctype, 'charset');
         if ($charset && strtoupper($charset) !== 'UTF-8') {
-            $conv = @mb_convert_encoding($decoded, 'UTF-8', $charset);
-            $decoded = $conv !== false ? $conv : $decoded;
+            // PHP 8 throws on charsets mbstring does not know (ks_c_5601-1987, windows-874, iso-8859-8-i, unknown-8bit):
+            // fall back to iconv, then to the bytes as valid UTF-8, so the reply is still stored and acted on
+            try {
+                $conv = @mb_convert_encoding($decoded, 'UTF-8', $charset);
+            } catch (\ValueError) {
+                $conv = @iconv(preg_replace('/^ks_c_5601-1987$/i', 'CP949', $charset), 'UTF-8//IGNORE', $decoded);
+            }
+            $decoded = $conv !== false ? $conv : mb_scrub($decoded, 'UTF-8');
         }
         if (stripos($ctype, 'text/html') === 0) {
             $cleaned = preg_replace(['/<br\s*\/?>/i', '/<\/p>/i', '/<(style|script)[^>]*>.*?<\/\1>/is'], ["\n", "\n\n", ''], mb_substr($decoded, 0, 500000));

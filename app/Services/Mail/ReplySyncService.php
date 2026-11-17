@@ -60,8 +60,23 @@ class ReplySyncService
                 : $client->uidSearch('SINCE ' . now()->subDays(14)->format('d-M-Y'));
             sort($uids);
             $last = $cursor->last_uid;
+            $abandoned = false;
             foreach (array_slice($uids, 0, $max) as $uid) {
-                $raw = $client->fetchRaw($uid);
+                try {
+                    $raw = $client->fetchRaw($uid);
+                } catch (\RuntimeException $e) {
+                    if (!str_contains($e->getMessage(), 'too large') && !str_contains($e->getMessage(), 'too long')) {
+                        throw $e;
+                    }
+                    // an oversized message (big attachments) must not block every later reply: step past it, and end this
+                    // pass because the connection is mid-response; the next sync reconnects and carries on
+                    \Illuminate\Support\Facades\Log::warning("Reply sync: message UID {$uid} skipped: {$e->getMessage()}");
+                    $last = max($last, $uid);
+                    $out['skipped_too_large'] = ($out['skipped_too_large'] ?? 0) + 1;
+                    $cursor->update(['last_uid' => $last, 'uid_validity' => $box['uidvalidity']]);
+                    $abandoned = true;
+                    break;
+                }
                 $last = max($last, $uid);
                 if ($raw !== null) {
                     $out['fetched']++;
@@ -77,7 +92,7 @@ class ReplySyncService
                 $cursor->update(['last_uid' => $last, 'uid_validity' => $box['uidvalidity']]);
             }
             $cursor->update(['last_uid' => $last, 'uid_validity' => $box['uidvalidity'], 'last_synced_at' => now()]);
-            $client->logout();
+            $abandoned ? $client->abandon() : $client->logout();
             $health->success('imap', true);
             SystemHeartbeat::updateOrCreate(['component' => 'reply_sync'], ['beat_at' => now(), 'meta' => $out]);
         } catch (ImapException $e) {

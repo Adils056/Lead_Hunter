@@ -430,6 +430,54 @@ class WhatsappOutreachTest extends TestCase
         $this->actingAs($other)->post(route('whatsapp.label', $in), ['action' => 'reply'])->assertForbidden();
     }
 
+    public function test_reliability_fixes_for_whatsapp(): void
+    {
+        [$me, $lead] = $this->market();
+        // a second listing of the same business, same mobile: it must not get a second message
+        $twin = $this->clinic('Smile Dental Twin', ['viewport' => 'fail', 'https' => 'pass'], '0300 1234567');
+        $this->lead($twin);
+        $r = app(WhatsappOutreach::class)->run();
+        $this->assertSame(1, WhatsappMessage::where('to_number', '923001234567')->count(), json_encode($r));
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+
+        // EZIMK's copy of a message we sent is ours, not a prospect's
+        $this->postJson($url, ['payload' => ['type' => 'MESSAGE_SENT', 'data' => ['from' => '923311111174', 'to' => '923001234567', 'message' => 'Hi, this is Ismail']], 'sender' => '923311111174'])
+            ->assertJson(['action' => 'ignored']);
+        // "don't stop" is not a stop request; a greeting phrase inside a real answer is a reply
+        $this->assertFalse(\App\Services\Outreach\WhatsappInbox::isOptOut("Don't stop, send me more"));
+        $this->post($url, ['from' => '923001234567', 'message' => 'Thank you for reaching out, yes we need a new website. Call me tomorrow'])->assertJson(['action' => 'reply']);
+        $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
+    }
+
+    public function test_a_whatsapp_lost_to_a_gateway_fault_is_retried_once(): void
+    {
+        $this->market();
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::fake(['ezimk.com/*' => Http::sequence()->push(['error' => 'Request Failed'], 200)->push(['message_status' => 'Success'], 200)->push(['message_status' => 'Success'], 200)]);
+        app(WhatsappOutreach::class)->run();
+        $msg = WhatsappMessage::firstOrFail();
+        $this->assertSame('failed', $msg->status);
+
+        $this->artisan('leadpilot:retry-failed')->expectsOutputToContain('sent on retry')->assertSuccessful();
+        $this->assertSame(['sent', 2], [$msg->fresh()->status, $msg->fresh()->attempts]);
+        $this->artisan('leadpilot:retry-failed')->assertSuccessful();
+        Http::assertSentCount(2);
+    }
+
+    public function test_an_approved_whatsapp_is_not_sent_to_someone_who_answered_meanwhile(): void
+    {
+        [, $lead] = $this->market();
+        app(AutonomyPolicyService::class)->set('outreach.whatsapp', 'approval');
+        app(WhatsappOutreach::class)->run();
+        $lead->moveStage('replied'); // they answered our e-mail while the WhatsApp waited for approval
+
+        $req = ApprovalRequest::where('type', 'whatsapp_message')->firstOrFail();
+        $done = app(ApprovalService::class)->decide($req, $this->admin, 'approve');
+        $this->assertSame('failed', $done->status);
+        $this->assertSame('rejected', WhatsappMessage::first()->status);
+        Http::assertNothingSent();
+    }
+
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
     {
         $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);
