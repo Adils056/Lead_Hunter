@@ -419,6 +419,10 @@
                 <i class="bi bi-envelope-paper-fill"></i>
                 <span>Sent &amp; Replies</span>
             </a>
+            <a href="{{ route('whatsapp.index') }}" class="nav-link-custom {{ request()->routeIs('whatsapp.index') || request()->routeIs('whatsapp.show') ? 'active' : '' }}">
+                <i class="bi bi-whatsapp"></i>
+                <span>WhatsApp</span>
+            </a>
             <a href="{{ route('campaigns.index') }}" class="nav-link-custom {{ request()->routeIs('campaigns.*') ? 'active' : '' }}">
                 <i class="bi bi-send-check-fill"></i>
                 <span>Campaign Automation</span>

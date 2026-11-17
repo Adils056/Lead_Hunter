@@ -184,6 +184,47 @@ class WhatsappInbox
         return $in;
     }
 
+    /**
+     * A person corrects how a message was read: a real reply the filter took for automatic, or the other way round.
+     * Marking a reply moves the lead to "replied", stops its e-mails and makes an "answer now" task; un-marking puts the
+     * lead back to "contacted" unless a person really answered elsewhere. Returns what changed, for the screen.
+     */
+    public function relabel(WhatsappInboundMessage $in, string $action, ?\App\Models\User $by = null): string
+    {
+        abort_unless(in_array($action, ['reply', 'auto_reply', 'wrong_number'], true), 422);
+        $from = $in->action;
+        if ($from === $action) {
+            return 'Nothing to change.';
+        }
+        $in->update(['action' => $action]);
+        $lead = $in->lead;
+        AuditLog::record('whatsapp_relabel', $lead ?? $in, ['action' => $from, 'inbound_id' => $in->id], ['action' => $action, 'inbound_id' => $in->id]);
+        if (!$lead) {
+            return 'Saved.';
+        }
+        if ($action === 'reply') {
+            app(ReplyOutcomeService::class)->stopSequences($lead, 'Replied on WhatsApp');
+            $lead->moveStage('replied');
+            if ($assignee = $lead->assigned_user_id ?? $by?->id) {
+                \App\Models\Task::firstOrCreate(['lead_id' => $lead->id, 'title' => 'Replied on WhatsApp: answer now', 'status' => 'pending'],
+                    ['company_id' => $lead->company_id, 'assigned_to' => $assignee, 'due_date' => now()->toDateString(), 'priority' => 'high']);
+            }
+
+            return 'Marked as a real reply: the lead is now "replied" and its e-mails have stopped.';
+        }
+        $otherReply = WhatsappInboundMessage::where('lead_id', $lead->id)->where('action', 'reply')->exists()
+            || \App\Models\InboundReply::where('lead_id', $lead->id)->get(['category', 'classification'])
+                ->contains(fn ($x) => !in_array($x->category ?? $x->classification, \App\Support\OutreachMetrics::NOT_A_REPLY, true));
+        if ($from === 'reply' && $lead->lifecycle_stage === 'replied' && !$otherReply) {
+            $lead->forceFill(['lifecycle_stage' => 'contacted'])->save();
+            \App\Models\Task::where('lead_id', $lead->id)->where('title', 'Replied on WhatsApp: answer now')->where('status', 'pending')->delete();
+
+            return 'Saved: the lead is back to "contacted".';
+        }
+
+        return 'Saved.';
+    }
+
     /** The business said stop: no more WhatsApp, no e-mail to anyone there, follow-ups cancelled. */
     protected function optOut(WhatsappMessage $sent, WhatsappInboundMessage $in): void
     {

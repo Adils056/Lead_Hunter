@@ -29,7 +29,7 @@
                 <span><i class="bi bi-briefcase me-1"></i>{{ $lead->job_title ?: 'Role unknown' }}</span>
                 @php($wa = $lead->whatsappMessages()->latest('id')->first())
                 @if($wa)
-                    <span title="{{ $wa->provider_response }}"><i class="bi bi-whatsapp me-1"></i>WhatsApp {{ $wa->status === 'sent' ? 'sent ' . $wa->sent_at?->diffForHumans() : str_replace('_', ' ', $wa->status) }} to +{{ $wa->to_number }}</span>
+                    <a href="{{ route('whatsapp.show', $wa) }}" class="text-muted" title="Open the WhatsApp conversation"><i class="bi bi-whatsapp me-1"></i>WhatsApp {{ $wa->status === 'sent' ? 'sent ' . $wa->sent_at?->diffForHumans() : str_replace('_', ' ', $wa->status) }} to +{{ $wa->to_number }}</a>
                     @php($waIn = $lead->whatsappInbound()->whereIn('action', ['reply', 'opt_out'])->latest('id')->first())
                     @if($waIn)
                         <span class="{{ $waIn->action === 'opt_out' ? 'text-danger' : 'text-success fw-semibold' }}" title="{{ $waIn->body }}"><i class="bi bi-reply me-1"></i>{{ $waIn->action === 'opt_out' ? 'Asked to stop on WhatsApp' : 'Replied on WhatsApp' }} {{ $waIn->created_at->diffForHumans() }}: “{{ \Illuminate\Support\Str::limit($waIn->body, 60) }}”</span>

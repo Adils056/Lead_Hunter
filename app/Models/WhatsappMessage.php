@@ -23,4 +23,10 @@ class WhatsappMessage extends Model
     {
         return $this->belongsTo(Company::class);
     }
+
+    /** What came back on this number after we sent it. */
+    public function inbound(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(WhatsappInboundMessage::class, 'whatsapp_message_id');
+    }
 }
