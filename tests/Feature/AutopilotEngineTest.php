@@ -94,6 +94,30 @@ class AutopilotEngineTest extends TestCase
 
     // ---------------------------------------------------------------- sequences
 
+    public function test_finished_sequences_do_not_crowd_out_the_follow_ups_still_due(): void
+    {
+        $lead = $this->qualifiedLead();
+        $engine = app(SequenceEngine::class);
+        $engine->planFirstTouches(5);
+        app(ApprovalService::class)->decide(ApprovalRequest::where('type', 'outreach_message')->firstOrFail(), $this->admin, 'approve');
+        $rec = CampaignRecipient::where('lead_id', $lead->id)->firstOrFail();
+        $this->assertSame('sent', $rec->status);
+
+        // 55 older sequences that already ended (last touch sent, no reply): they never get a follow-up
+        $max = OutreachSetting::current()->maxTouches();
+        foreach (range(1, 55) as $i) {
+            $old = Lead::create(['full_name' => "Old {$i}", 'email' => "old{$i}@done.test", 'contact_status' => 'identified']);
+            CampaignRecipient::create(['campaign_id' => $rec->campaign_id, 'lead_id' => $old->id, 'status' => 'sent', 'sequence_step' => $max,
+                'idempotency_key' => "done{$i}", 'sent_at' => now()->subDays(30)]);
+        }
+        $rec->update(['sent_at' => now()->subDays(4)]);
+        $lead->update(['last_contacted_at' => now()->subDays(4)]);
+        EmailLog::where('lead_id', $lead->id)->update(['occurred_at' => now()->subDays(4)]);
+        $this->replySyncHealthy();
+
+        $this->assertSame(1, $engine->planFollowUps()['created'], 'the live sequence still gets its follow-up');
+    }
+
     public function test_first_touch_requires_approval_by_default_then_follow_ups_thread_and_stop_on_reply(): void
     {
         $lead = $this->qualifiedLead();
@@ -212,6 +236,8 @@ class AutopilotEngineTest extends TestCase
                         $uids = array_filter($uids, fn ($u) => $u >= (int) $m[1]) ?: [max(array_keys($this->messages))]; // IMAP returns last msg for n:*
                     }
                     array_push($this->buf, '* SEARCH ' . implode(' ', $uids) . "\r\n", "{$tag} OK SEARCH completed\r\n");
+                } elseif (preg_match('/UID FETCH (\d+)/', $cmd, $m) && $this->messages[(int) $m[1]] === 'HUGE') {
+                    $this->buf[] = "* 1 FETCH (UID {$m[1]} BODY[] {30000000}\r\n"; // a 30 MB message (big attachments)
                 } elseif (preg_match('/UID FETCH (\d+)/', $cmd, $m)) {
                     $raw = $this->messages[(int) $m[1]];
                     array_push($this->buf, "* 1 FETCH (UID {$m[1]} BODY[] {" . strlen($raw) . "}\r\n", ['raw' => $raw], ")\r\n", "{$tag} OK FETCH completed\r\n");
@@ -254,6 +280,21 @@ class AutopilotEngineTest extends TestCase
         $res = (new ReplySyncService($this->scriptedImap([201 => $reply])))->sync();
         $this->assertNull($res['error'], (string) $res['error']);
         $this->assertSame($lead->id, \App\Models\InboundReply::where('message_id', 'r-9@ais.test')->value('lead_id'));
+    }
+
+    public function test_one_huge_email_does_not_block_every_later_reply(): void
+    {
+        config(['leadpilot.imap' => ['enabled' => true, 'host' => 'imap.test', 'port' => 993, 'username' => 'ismail@eziline.test', 'password' => 'app-pass', 'mailbox' => 'INBOX']]);
+        $lead = Lead::create(['full_name' => 'Ali', 'email' => 'ali@smile.test', 'contact_status' => 'identified']);
+        $c = Campaign::create(['name' => 'c', 'service_offered' => 'web_dev', 'created_by' => $this->admin->id, 'status' => 'running', 'is_autopilot' => true]);
+        CampaignRecipient::create(['campaign_id' => $c->id, 'lead_id' => $lead->id, 'status' => 'sent', 'idempotency_key' => 'h1', 'sent_at' => now()->subDay(), 'rfc_message_id' => 'orig-h@eziline.test']);
+        $reply = "From: Ali <ali@smile.test>\r\nTo: ismail@eziline.test\r\nSubject: Re: hi\r\nMessage-ID: <rh@smile.test>\r\nIn-Reply-To: <orig-h@eziline.test>\r\nContent-Type: text/plain\r\n\r\nYes, call me tomorrow.\r\n";
+        $box = [301 => 'HUGE', 302 => $reply];
+
+        (new ReplySyncService($this->scriptedImap($box)))->sync();
+        $this->assertSame(301, \App\Models\MailboxCursor::first()->last_uid, 'the oversized message is stepped past');
+        (new ReplySyncService($this->scriptedImap($box)))->sync();
+        $this->assertSame(1, \App\Models\InboundReply::where('message_id', 'rh@smile.test')->count(), 'the reply after it is read');
     }
 
     public function test_imap_sync_matches_replies_by_thread_detects_bounces_and_is_idempotent(): void

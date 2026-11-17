@@ -46,7 +46,10 @@ class WhatsappInbox
         if ($text === '') {
             return false;
         }
-        if (preg_match(self::AUTO_REPLY, $text) === 1) {
+        // a greeting phrase inside a real answer ("Thank you for reaching out, yes we need a new website. Call me tomorrow",
+        // "Yes please send the details, our team will review it") is still a person: words of intent win
+        $intent = '/\b(yes|yeah|yep|sure|okay|price|pricing|prices|cost|costs|charges|rates|quote|quotation|budget|how much|call me|call us|contact me|meeting|tomorrow|send (me|us|the)|we need|i need|we want|i want)\b/i';
+        if (preg_match(self::AUTO_REPLY, $text) === 1 && preg_match($intent, $text) !== 1) {
             return true;
         }
         // a business's own broadcast or advert (State Life's "🌟 ... PLAN 🌟 📌 ..."): long and full of emoji
@@ -86,6 +89,11 @@ class WhatsappInbox
     {
         $text = trim((string) $text);
 
+        // "don't stop, send me more" is the opposite of a stop request
+        if (preg_match('/\b(don\'?t|do not|never|no need to|not)\s+stop\b/i', $text)) {
+            return false;
+        }
+
         return $text !== '' && mb_strlen($text) <= 80 && preg_match(self::OPT_OUT, $text) === 1;
     }
 
@@ -123,6 +131,10 @@ class WhatsappInbox
         $rawFrom = $pick(['from', 'sender', 'remotejid', 'remote_jid', 'chatid', 'chat_id', 'wa_id', 'waid', 'author', 'participant', 'msisdn', 'phone', 'number', 'mobile']);
         $from = $rawFrom ? preg_replace('/\D/', '', explode(':', explode('@', $rawFrom)[0])[0]) : null;
         $fromMe = collect($flat)->first(fn ($v, $k) => in_array(strtolower((string) last(explode('.', (string) $k))), ['fromme', 'from_me'], true));
+        // EZIMK also posts a copy of every message we send ("type": "MESSAGE_SENT"): that is us, not a prospect
+        if (preg_match('/\bMESSAGES?_SENT\b|\bSEND_MESSAGE\b/i', (string) $pick(['type', 'event']))) {
+            $fromMe = true;
+        }
         // a message id: the named fields, or a plain "id" only where it is the message's own
         $id = $pick(['message_id', 'messageid', 'msg_id', 'msgid', 'wamid']);
         foreach (['id', 'data.id', 'message.id', 'key.id', 'data.key.id', 'data.message.id'] as $k) {

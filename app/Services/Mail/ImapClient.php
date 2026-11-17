@@ -66,6 +66,12 @@ class ImapClient
         return $literals[0] ?? null;
     }
 
+    /** Drop the connection without a goodbye, when it is left in the middle of a response. */
+    public function abandon(): void
+    {
+        $this->t->close();
+    }
+
     public function logout(): void
     {
         try {

@@ -158,6 +158,13 @@ class WhatsappOutreach
             }
             $c = $lead->company;
             $num = $this->numbers[$lead->id];
+            // one message per number, not only per company: two records of the same business (a duplicate listing, a
+            // branch sharing a mobile) must not both message it
+            $tail = substr($num['number'], -10);
+            if (WhatsappMessage::where('to_number', 'like', "%{$tail}")->whereIn('status', ['sent', 'pending_approval'])->exists()) {
+                $out['funnel']['suppressed']++;
+                continue;
+            }
             if (!$this->sequence->inSendingWindow(null, $lead)) {
                 $out['funnel']['outside_hours']++;
                 $out['skipped'][] = "{$c->name}: outside their working hours";

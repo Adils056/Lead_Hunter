@@ -34,29 +34,35 @@ class ReplyClassifier
             return $this->out('unsubscribe', 99, 'Explicit opt-out request. Suppress immediately and stop all sequences.', false);
         }
 
-        if (preg_match('/\b(out of (the )?office|ooo|automatic reply|auto-?reply|on (annual |parental |maternity |sick )?leave|on vacation|on holiday|away from (my desk|the office)|limited access to (my )?email|back in the office|returning (to the office )?on|auto(matic)? response)\b/', $t)) {
-            $return = null;
-            if (preg_match('/\b(?:back|return(?:ing)?|until)\s+(?:on\s+)?((?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s*)?(\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,9}|[a-z]{3,9}\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)/', $t, $m)) {
-                $return = trim($m[2]);
-            }
-
-            return $this->out('out_of_office', 95, 'Auto-reply / out of office. Pause the sequence; resume after return date.', false, null, ['return_date_text' => $return]);
-        }
-
         $negated = preg_match('/\b(not|no longer|isn\'t|aren\'t|don\'t|do not|won\'t|never)\s+(really\s+)?(interested|looking|in need|need)\b/', $t)
             // "we're not working with external recruiters, staffing agencies, or contract teams" (seen live, was "uncertain")
             || preg_match('/\b(not|aren\'t|are not|don\'t|do not|won\'t|never)\s+(currently\s+)?(working|work|partnering|engaging|using|hiring)\s+(with\s+)?(any\s+)?(external|outside|third[- ]party|offshore)?\s*(recruiters?|agenc(y|ies)|vendors?|contractors?|freelancers?|staffing|outsourc\w*|consultants?|contract teams?)\b/', $t)
             || preg_match('/\b(no|without)\s+(recruiters?|agenc(y|ies)|solicitations?|vendors?|outsourcing)\b|\b(remove me|take me off|stop (emailing|contacting) (me|us))\b/', $t);
-        if ($negated || preg_match('/\b(no thanks|no thank you|not at this time|not right now|please pass|we\'?ll pass|not a (good )?fit|no need|not relevant)\b/', $t)) {
+        $declined = $negated || preg_match('/\b(no thanks|no thank you|not at this time|not right now|please pass|we\'?ll pass|not a (good )?fit|no need|not relevant)\b/', $t);
+        $meeting = preg_match('/\b(schedule|book|set up|arrange|hop on|jump on)\b.{0,30}\b(call|meeting|chat|demo|zoom|meet)\b|\b(call|meeting|chat|zoom|google meet|teams)\b.{0,40}\b(monday|tuesday|wednesday|thursday|friday|tomorrow|next week|this week|\d{1,2}\s?(am|pm))\b|\bwhen are you (free|available)|send (me )?(an |a calendar )?invite|calendar link\b/', $t);
+        $explicit = preg_match('/\b(interested|sounds (good|great|interesting)|let\'?s (talk|discuss|connect|do it|go ahead)|keen|(would|\'d) love to|yes,? please|happy to (chat|talk)|go ahead|count us in)\b/', $t);
+        $infoAsk = preg_match('/\b(tell me more|more (info|information|details)|send (me |us )?(more |some )?(info|information|details|portfolio|case studies|examples|a proposal|a quote|your pricing|pricing|rate card)|send (me |us )?(a |your )?(proposal|quote|rate card)|what\'?s your (budget|price|rate|pricing)|how much (would|does|do|is)|what do you charge|do you have examples)\b/', $t);
+
+        // An out-of-office notice only when the person says nothing else: "Interested, I'm on leave, book a call when I'm
+        // back in the office" is a person answering, and must stop the sequence and reach the salesperson.
+        if (!$declined && !$meeting && !$explicit && !$infoAsk) {
+            if (preg_match('/\b(out of (the )?office|ooo|automatic reply|auto-?reply|on (annual |parental |maternity |sick )?leave|on vacation|on holiday|away from (my desk|the office)|limited access to (my )?email|back in the office|returning (to the office )?on|auto(matic)? response)\b/', $t)) {
+                $return = null;
+                if (preg_match('/\b(?:back|return(?:ing)?|until)\s+(?:on\s+)?((?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s*)?(\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,9}|[a-z]{3,9}\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)/', $t, $m)) {
+                    $return = trim($m[2]);
+                }
+
+                return $this->out('out_of_office', 95, 'Auto-reply / out of office. Pause the sequence; resume after return date.', false, null, ['return_date_text' => $return]);
+            }
+        }
+
+        if ($declined) {
             return $this->out('not_interested', 92, 'Prospect declined. Stop the sequence; optionally re-engage in 6 months if a new trigger appears.', false,
                 "Hi {$name},\n\nUnderstood — thanks for letting me know. I won't follow up further.\n\nAll the best.");
         }
 
-        $meeting = preg_match('/\b(schedule|book|set up|arrange|hop on|jump on)\b.{0,30}\b(call|meeting|chat|demo|zoom|meet)\b|\b(call|meeting|chat|zoom|google meet|teams)\b.{0,40}\b(monday|tuesday|wednesday|thursday|friday|tomorrow|next week|this week|\d{1,2}\s?(am|pm))\b|\bwhen are you (free|available)|send (me )?(an |a calendar )?invite|calendar link\b/', $t);
         // A meeting request wins; plain interest that also raises a price objection is an objection.
         $priceObjection = preg_match('/\b(too expensive|over (our|the) budget|out of (our )?budget|no budget|can\'?t afford|too pricey)\b/', $t);
-        $explicit = preg_match('/\b(interested|sounds (good|great|interesting)|let\'?s (talk|discuss|connect|do it|go ahead)|keen|(would|\'d) love to|yes,? please|happy to (chat|talk)|go ahead|count us in)\b/', $t);
-        $infoAsk = preg_match('/\b(tell me more|more (info|information|details)|send (me |us )?(more |some )?(info|information|details|portfolio|case studies|examples|a proposal|a quote|your pricing|pricing|rate card)|send (me |us )?(a |your )?(proposal|quote|rate card)|what\'?s your (budget|price|rate|pricing)|how much (would|does|do|is)|what do you charge|do you have examples)\b/', $t);
         if ($meeting) {
             $booking = config('leadpilot.agency.booking_url');
 

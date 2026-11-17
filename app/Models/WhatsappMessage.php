@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WhatsappMessage extends Model
 {
-    protected $fillable = ['lead_id', 'company_id', 'to_number', 'number_source', 'body', 'file_url', 'status', 'provider_response', 'sent_at'];
+    protected $fillable = ['lead_id', 'company_id', 'to_number', 'number_source', 'body', 'file_url', 'status', 'attempts', 'provider_response', 'sent_at'];
 
     protected function casts(): array
     {
