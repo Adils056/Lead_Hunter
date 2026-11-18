@@ -512,6 +512,53 @@ class WhatsappOutreachTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_numbers_in_the_wrong_format_are_put_right_or_skipped(): void
+    {
+        $P = \App\Support\Phone::class;
+        // the live failures of 18 Nov: a local number in a wa.me link, a US link without its 1, a typo, a number too long
+        $this->assertSame('923377775660', $P::fromWhatsappLink('03377775660', 'Pakistan'));
+        $this->assertSame('15168002238', $P::fromWhatsappLink('5168002238', 'United States'));
+        $this->assertSame('923217654321', $P::fromWhatsappLink('923217654321', 'Pakistan'));
+        $this->assertSame('971501234567', $P::fromWhatsappLink('00971501234567', 'United Arab Emirates'));
+        $this->assertNull($P::fromWhatsappLink('97180021776789', 'United Arab Emirates'));
+        $this->assertFalse($P::plausible('97180021776789'));
+        $this->assertFalse($P::inCountry('9966559353338', 'Saudi Arabia'));
+        $this->assertTrue($P::plausible('966505309999'));
+
+        $local = $this->clinic('Local Link Dental', ['viewport' => 'fail', 'https' => 'pass'], null, ['wa.me' => 'https://wa.me/03001387788']);
+        $typo = $this->clinic('Typo Cafe', ['viewport' => 'fail', 'https' => 'pass'], null, ['wa.me' => 'https://wa.me/9966559353338']);
+        $typo->update(['country' => 'Saudi Arabia']);
+        $wa = app(WhatsappOutreach::class);
+        $this->assertSame(['number' => '923001387788', 'source' => 'website_whatsapp_link'], $wa->numberFor($this->lead($local)));
+        $l = $this->lead($typo);
+        $l->update(['country' => 'Saudi Arabia', 'phone' => '+9966559353338']);
+        $this->assertNull($wa->numberFor($l->fresh()), 'a number from another country is a typo, not a WhatsApp');
+    }
+
+    public function test_a_whatsapp_refused_for_its_number_format_is_resent_to_the_corrected_number(): void
+    {
+        $c = $this->clinic('Paramount Associates', ['viewport' => 'fail', 'https' => 'pass'], null, ['wa.me' => 'https://wa.me/03377775660']);
+        $lead = $this->lead($c);
+        $bad = WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $c->id, 'to_number' => '03377775660', 'number_source' => 'website_whatsapp_link',
+            'body' => 'Hi', 'status' => 'failed', 'attempts' => 2, 'provider_response' => '{"error":"Request Failed"}']);
+        $bad->forceFill(['created_at' => now()->subDays(14)])->save();
+        $junk = $this->clinic('A1 Properties', ['viewport' => 'fail', 'https' => 'pass'], null, ['wa.me' => 'https://wa.me/97180021776789']);
+        $junkMsg = WhatsappMessage::create(['lead_id' => $this->lead($junk)->id, 'company_id' => $junk->id, 'to_number' => '97180021776789', 'number_source' => 'website_whatsapp_link',
+            'body' => 'Hi', 'status' => 'failed', 'attempts' => 1, 'provider_response' => '{"error":"Request Failed"}']);
+
+        // a number that cannot be made valid is left alone; the older message waits for --days
+        $this->artisan('leadpilot:retry-failed')->expectsOutputToContain('not retried: no valid WhatsApp number')->assertSuccessful();
+        Http::assertNothingSent();
+        $this->artisan('leadpilot:retry-failed', ['--days' => 30])->expectsOutputToContain('sent on retry')->assertSuccessful();
+        Http::assertSent(fn ($req) => collect($req->data())->pluck('contents', 'name')->get('to') === '923377775660');
+        $this->assertSame(['sent', '923377775660', 3], [$bad->fresh()->status, $bad->fresh()->to_number, $bad->fresh()->attempts]);
+        $this->assertSame('failed', $junkMsg->fresh()->status);
+
+        // nothing more on the next run
+        $this->artisan('leadpilot:retry-failed', ['--days' => 30])->assertSuccessful();
+        Http::assertSentCount(1);
+    }
+
     public function test_an_approved_whatsapp_is_not_sent_to_someone_who_answered_meanwhile(): void
     {
         [, $lead] = $this->market();
