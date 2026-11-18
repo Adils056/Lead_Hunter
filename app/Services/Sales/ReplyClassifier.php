@@ -64,7 +64,7 @@ class ReplyClassifier
         // A meeting request wins; plain interest that also raises a price objection is an objection.
         $priceObjection = preg_match('/\b(too expensive|over (our|the) budget|out of (our )?budget|no budget|can\'?t afford|too pricey)\b/', $t);
         if ($meeting) {
-            $booking = config('leadpilot.agency.booking_url');
+            $booking = \App\Support\BookingLink::base();
 
             return $this->out('interested', 93, 'Prospect wants to meet. Offer real available times (or your booking link) within 24h.', false,
                 "Hi {$name},\n\nGreat — " . ($booking ? "you can pick any slot that suits you here: {$booking}" : '[LeadPilot will insert real available times from your calendar settings]') . "\n\nI'll bring the specific findings so we can keep it short.",

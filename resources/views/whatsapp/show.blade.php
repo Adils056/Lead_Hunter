@@ -109,7 +109,7 @@
                     <textarea name="body" class="form-control mb-2" rows="7" maxlength="1500" required>{{ old('body', $draft) }}</textarea>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
                         <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-send-fill me-1"></i>Send on WhatsApp</button>
-                        @unless(config('leadpilot.agency.booking_url'))
+                        @unless(\App\Support\BookingLink::base())
                             <span class="small text-muted">Tip: set LEADPILOT_BOOKING_URL (a Calendly or Google Calendar link) and every answer offers a time slot.</span>
                         @endunless
                     </div>

@@ -66,7 +66,7 @@ class WhatsappAnswer
         } else {
             $lines[] = 'I would be glad to walk you through the website report' . ($company ? " for {$company}" : '') . '. It takes about 10 minutes.';
         }
-        $booking = (string) config('leadpilot.agency.booking_url');
+        $booking = (string) \App\Support\BookingLink::for($lead);
         $lines[] = $booking !== ''
             ? "You can pick a time that suits you here: {$booking}"
             : 'Would a short call today or tomorrow work for you? Just tell me a time and I will call you on this number.';

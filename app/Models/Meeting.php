@@ -20,6 +20,8 @@ class Meeting extends Model
         'scheduled_end',
         'status',
         'outcome_notes',
+        'source',
+        'external_ref',
     ];
 
     protected function casts(): array

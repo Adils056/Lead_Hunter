@@ -325,6 +325,13 @@ return [
         'webhook_token' => env('WHATSAPP_WEBHOOK_TOKEN'),
     ],
 
+    // Calendly: bookings are read every 10 minutes and the lead moves to "meeting booked" (Calendly → Integrations →
+    // API & Webhooks → Personal access token). Kept only in the server's .env.
+    'calendly' => [
+        'token' => env('CALENDLY_TOKEN'),
+        'api' => env('CALENDLY_API_URL', 'https://api.calendly.com'),
+    ],
+
     'alerts' => [
         'webhook_url' => env('LEADPILOT_ALERT_WEBHOOK_URL'),
         // a reply left without an answer this long is escalated once to these users (comma-separated e-mails of

@@ -22,7 +22,7 @@ class WaitingList
     {
         $items = collect();
         foreach (InboundReply::with('lead.company')->whereIn('category', self::ANSWER_CATEGORIES)->where('received_at', '>=', now()->subDays(30))->get() as $r) {
-            if (!$r->lead || in_array($r->lead->lifecycle_stage, ['won', 'lost', 'not_a_fit', 'opted_out'], true)) {
+            if (!$r->lead || in_array($r->lead->lifecycle_stage, ['meeting_booked', 'proposal_sent', 'negotiation', 'won', 'lost', 'not_a_fit', 'opted_out'], true)) {
                 continue;
             }
             $answered = EmailLog::where('lead_id', $r->lead_id)->where('direction', 'outbound')->where('occurred_at', '>', $r->received_at)->exists()

@@ -151,7 +151,7 @@ class ReplyOutcomeService
             return; // the high-priority task created above is the only action
         }
         $slotsSvc = app(MeetingSlotService::class);
-        $booking = config('leadpilot.agency.booking_url');
+        $booking = \App\Support\BookingLink::for($lead, 'email');
         $times = $booking ? "You can pick any time that suits you here: {$booking}" : "Would any of these work?\n" . $slotsSvc->formatted($slotsSvc->slots());
         $name = $lead->contact_status === 'identified' && $lead->first_name ? $lead->first_name : 'there';
         $body = "Hi {$name},\n\nThanks for getting back to me. {$times}\n\nIf none fit, just suggest a time.\n\n" . config('leadpilot.agency.sender_name');
