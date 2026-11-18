@@ -46,7 +46,17 @@
 <div class="wa-thread">
 @foreach($timeline as $e)
     @php $m = $e['m']; @endphp
-    @if($e['out'])
+    @if(!empty($e['answer']))
+        <div class="wa-row out">
+            <div class="wa-bubble"><div class="wa-text">{{ $m->body }}</div>
+                <div class="wa-meta">
+                    {{ $m->user?->name ?? 'LeadPilot' }} → +{{ $m->to_number }} ·
+                    @if($m->status === 'sent'){{ $m->sent_at?->timezone($tz)->format('M d, H:i') }} · <i class="bi bi-check2-all text-success"></i> sent
+                    @else<span class="text-danger">not delivered</span> ({{ \Illuminate\Support\Str::limit((string) $m->provider_response, 120) }})@endif
+                </div>
+            </div>
+        </div>
+    @elseif($e['out'])
         <div class="wa-row out">
             <div class="wa-bubble"><div class="wa-text">{{ $m->body }}</div>
                 @if($m->file_url)<div><a class="wa-file" href="{{ $m->file_url }}" target="_blank" rel="noopener noreferrer"><i class="bi bi-file-earmark-pdf-fill text-danger"></i> Website &amp; competitor report (PDF)</a></div>@endif
@@ -85,6 +95,29 @@
     <p class="text-muted small mb-0">No answer yet. When they write back, the message appears here and the salesperson is alerted.</p>
 @endif
 </div>
+
+@if($canAnswer && $timeline->where('out', false)->where('m.action', 'reply')->isNotEmpty())
+    <div class="card border-0 shadow-sm mt-4" style="max-width: 760px;" id="answer">
+        <div class="card-body">
+            <h6 class="fw-bold mb-1"><i class="bi bi-reply-fill text-success me-1"></i>Answer them</h6>
+            @if($blocked)
+                <p class="text-muted small mb-0">{{ $blocked }}</p>
+            @else
+                <p class="text-muted small mb-2">LeadPilot wrote this answer from what they said. Read it, change anything, then send. It goes from the team's WhatsApp number.</p>
+                <form method="POST" action="{{ route('whatsapp.answer', $message) }}" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                    @csrf
+                    <textarea name="body" class="form-control mb-2" rows="7" maxlength="1500" required>{{ old('body', $draft) }}</textarea>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-send-fill me-1"></i>Send on WhatsApp</button>
+                        @unless(config('leadpilot.agency.booking_url'))
+                            <span class="small text-muted">Tip: set LEADPILOT_BOOKING_URL (a Calendly or Google Calendar link) and every answer offers a time slot.</span>
+                        @endunless
+                    </div>
+                </form>
+            @endif
+        </div>
+    </div>
+@endif
 
 <p class="small text-muted mt-4 mb-0" style="max-width: 760px;">
     Grey messages were sent by a machine (WhatsApp Business greetings, away messages, adverts) or by someone at a wrong number. They do not count as replies, stop no e-mails and alert no one. If LeadPilot read a message wrongly, use the link under it to correct it.

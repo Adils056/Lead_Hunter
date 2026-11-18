@@ -77,6 +77,16 @@ class SequenceEngine
 
             return $out;
         }
+        // Do not keep drafting while earlier first e-mails still wait to be sent: a draft written today and sent in two
+        // weeks is stale, and the lead stays locked to it. Seen live: 162 first e-mails were waiting on 18 Nov.
+        $waiting = CampaignRecipient::where('sequence_step', 1)->whereIn('status', ['approved', 'queued', 'pending_approval'])
+            ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))->count();
+        $backlog = OutreachSetting::current()->firstTouchCap() * max(1, (int) config('leadpilot.autopilot.first_touch_backlog_days', 3));
+        if ($waiting >= $backlog) {
+            $out['skipped'][] = "{$waiting} first e-mails are already waiting to be sent; no new drafts until fewer than {$backlog} wait";
+
+            return $out;
+        }
         $leads = Lead::with('company')
             ->whereIn('pipeline_state', ['qualified', 'eligible_for_outreach'])
             ->whereIn('contact_status', OutreachSetting::current()->allow_shared_inbox ? ['identified', 'generic_inbox'] : ['identified'])->whereNotNull('email')
@@ -224,10 +234,7 @@ class SequenceEngine
         $cap = OutreachSetting::current()->firstTouchCap();
 
         // 'queued' = deferred by the daily quota; it is approved work and must go out once due (it used to be stranded)
-        $due = CampaignRecipient::with('campaign', 'lead')->whereIn('status', ['approved', 'queued'])
-            ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
-            ->where(fn ($q) => $q->whereNull('scheduled_at')->orWhere('scheduled_at', '<=', now()))
-            ->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit * 10)->get();
+        $due = $this->dueQueue($limit, $firstToday, $cap);
 
         $tried = 0;
         $outside = 0;
@@ -266,6 +273,39 @@ class SequenceEngine
         $out['waiting_for_local_hours'] = $outside;
 
         return $out;
+    }
+
+    /**
+     * The approved, due messages to try now, in order. Follow-ups go first, but while new businesses are waiting for
+     * their first e-mail, follow-ups may use only `follow_up_share` of the daily limit (default 60%: 15 of 25). Seen
+     * live on 18 Nov: once follow-ups resumed, they took 24 of the 25 daily sends and one new business was e-mailed,
+     * with 162 first e-mails waiting. The reserve is released when no first e-mail can go today (none waiting, today's
+     * first-touch cap used) or late in the afternoon (`reserve_release_hour`), so no daily send is wasted.
+     */
+    public function dueQueue(int $limit = 20, ?int $firstToday = null, ?int $cap = null): \Illuminate\Support\Collection
+    {
+        $base = fn () => CampaignRecipient::with('campaign', 'lead')->whereIn('status', ['approved', 'queued'])
+            ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
+            ->where(fn ($q) => $q->whereNull('scheduled_at')->orWhere('scheduled_at', '<=', now()));
+        $followUps = $base()->where('sequence_step', '>', 1)->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit * 10)->get();
+        $firsts = $base()->where('sequence_step', 1)->orderBy('scheduled_at')->limit($limit * 10)->get();
+
+        $tz = config('leadpilot.timezone');
+        $startOfDay = now($tz)->startOfDay()->utc();
+        $sentToday = fn (bool $followUp) => CampaignRecipient::where('sequence_step', $followUp ? '>' : '=', 1)
+            ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))->where('sent_at', '>=', $startOfDay)->count();
+        $firstToday ??= $sentToday(false);
+        $cap ??= OutreachSetting::current()->firstTouchCap();
+
+        $released = $firsts->isEmpty() || $firstToday >= $cap
+            || now($tz)->hour >= (int) config('leadpilot.autopilot.reserve_release_hour', 15);
+        if ($released) {
+            return $followUps->concat($firsts)->values();
+        }
+        $share = min(1.0, max(0.0, (float) config('leadpilot.autopilot.follow_up_share', 0.6)));
+        $room = max(0, (int) ceil(max(1, (int) OutreachSetting::current()->max_daily_sends) * $share) - $sentToday(true));
+
+        return $followUps->take($room)->concat($firsts)->values(); // the other follow-ups wait for the afternoon or tomorrow
     }
 
     /** @return array{sent: bool, reason: ?string, message_id: ?string} */
