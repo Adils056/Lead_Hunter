@@ -49,7 +49,7 @@ class WhatsappTemplate extends Model
             'sender' => config('leadpilot.agency.sender_name'),
             'agency' => config('leadpilot.agency.name'),
             'phone' => $settings->contact_phone ?: '',
-            'booking_url' => $settings->booking_url ?: (config('leadpilot.agency.booking_url') ?: config('leadpilot.agency.website')),
+            'booking_url' => \App\Support\BookingLink::for($lead) ?: config('leadpilot.agency.website'),
         ];
         $text = preg_replace_callback('/\{(' . implode('|', self::PLACEHOLDERS) . ')\}/', fn ($m) => (string) $values[$m[1]], $this->body);
 
