@@ -67,13 +67,14 @@ class WhatsappOutreach
         $country = $lead->country ?: $c?->country;
         // 1. the business links its own WhatsApp on its website: an open invitation to message it there
         $link = $c?->latestCompletedWebsiteAudit?->contacts_found['socials']['wa.me'] ?? null;
-        if ($link && preg_match('#wa\.me/\+?(\d{8,15})#', $link, $m)) {
-            return ['number' => $m[1], 'source' => 'website_whatsapp_link'];
+        // (made international and checked: sites often link a local number such as wa.me/03001234567)
+        if ($link && preg_match('#wa\.me/\+?(\d{6,16})#', $link, $m) && ($n = Phone::fromWhatsappLink($m[1], $country))) {
+            return ['number' => $n, 'source' => 'website_whatsapp_link'];
         }
         // 2. a mobile number in a market where businesses answer on WhatsApp (never a landline, never the US/UK office line)
         foreach ([$lead->phone, $c?->public_phone] as $raw) {
             $n = Phone::international($raw, $country);
-            if ($n && Phone::whatsappHint($n, $country) === null) {
+            if ($n && Phone::plausible($n) && Phone::inCountry($n, $country) && Phone::whatsappHint($n, $country) === null) {
                 return ['number' => $n, 'source' => 'mobile_number'];
             }
         }
