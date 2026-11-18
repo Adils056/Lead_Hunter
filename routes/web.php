@@ -167,6 +167,7 @@ Route::middleware(['auth'])->group(function () {
     // WhatsApp: every message sent and what came back, one conversation per business
     Route::get('/whatsapp', [\App\Http\Controllers\WhatsappController::class, 'index'])->name('whatsapp.index');
     Route::get('/whatsapp/{message}', [\App\Http\Controllers\WhatsappController::class, 'show'])->name('whatsapp.show')->whereNumber('message');
+    Route::post('/whatsapp/{message}/answer', [\App\Http\Controllers\WhatsappController::class, 'answer'])->name('whatsapp.answer')->whereNumber('message')->middleware('throttle:20,1');
     Route::post('/whatsapp/inbound/{inbound}/label', [\App\Http\Controllers\WhatsappController::class, 'label'])->name('whatsapp.label')->whereNumber('inbound')->middleware('throttle:60,1');
 
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');

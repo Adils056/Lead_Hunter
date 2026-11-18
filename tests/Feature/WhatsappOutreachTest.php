@@ -430,6 +430,54 @@ class WhatsappOutreachTest extends TestCase
         $this->actingAs($other)->post(route('whatsapp.label', $in), ['action' => 'reply'])->assertForbidden();
     }
 
+    public function test_a_salesperson_answers_a_whatsapp_reply_from_the_screen_with_a_ready_answer(): void
+    {
+        [$me, $lead] = $this->market();
+        config(['leadpilot.agency.booking_url' => 'https://cal.example/ismail']);
+        app(WhatsappOutreach::class)->run();
+        $msg = WhatsappMessage::firstOrFail();
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+
+        // no answer box before they reply: only people who wrote to us are answered from here
+        $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertOk()->assertDontSee('Send on WhatsApp');
+        $this->actingAs($this->admin)->post(route('whatsapp.answer', $msg), ['body' => 'Hello there'])->assertRedirect();
+        $this->assertSame(0, \App\Models\WhatsappReply::count());
+
+        $this->post($url, ['from' => '923001234567', 'message' => 'How much would the fixes cost?'])->assertJson(['action' => 'reply']);
+        $this->assertSame(1, \App\Models\Task::where('lead_id', $lead->id)->where('status', 'pending')->count());
+
+        // the ready answer fits what they asked and offers the booking link
+        $page = $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertOk()->assertSee('Send on WhatsApp');
+        $page->assertSee('The price depends on what Smile Dental needs', false)->assertSee('https://cal.example/ismail');
+
+        // the salesperson edits and sends it: it goes to their number, the task is done, and it shows in the thread
+        $body = "Hi, thanks! A redesign starts with a short call.\n\nPick a time: https://cal.example/ismail";
+        $this->actingAs($this->admin)->post(route('whatsapp.answer', $msg), ['body' => $body])->assertRedirect()->assertSessionHas('success');
+        Http::assertSent(fn ($req) => collect($req->data())->pluck('contents', 'name')->get('to') === '923001234567'
+            && collect($req->data())->pluck('contents', 'name')->get('message') === $body);
+        $answer = \App\Models\WhatsappReply::firstOrFail();
+        $this->assertSame(['sent', $this->admin->id, $lead->id], [$answer->status, $answer->user_id, $answer->lead_id]);
+        $this->assertSame('completed', \App\Models\Task::where('lead_id', $lead->id)->value('status'));
+        $this->artisan('leadpilot:waiting-digest', ['--dry-run' => true])->expectsOutputToContain('Nobody is waiting');
+        $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertSee('A redesign starts with a short call.');
+
+        // a double click does not send it twice, and the outreach caps do not count our answers
+        $this->actingAs($this->admin)->post(route('whatsapp.answer', $msg), ['body' => $body])->assertSessionHas('error');
+        $this->assertSame(1, \App\Models\WhatsappReply::count());
+        $this->assertSame(1, app(WhatsappOutreach::class)->sentToday());
+
+        // someone who may not open the lead cannot answer for it
+        $other = User::factory()->create(['role' => 'sales', 'is_active' => true]);
+        $lead->update(['assigned_user_id' => $this->admin->id]);
+        $this->actingAs($other)->post(route('whatsapp.answer', $msg), ['body' => 'Hi'])->assertForbidden();
+
+        // after STOP, nothing more goes out
+        $this->post($url, ['from' => '923001234567', 'message' => 'STOP']);
+        $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertSee('They asked us to stop')->assertDontSee('Send on WhatsApp');
+        $this->actingAs($this->admin)->post(route('whatsapp.answer', $msg), ['body' => 'One more thing'])->assertSessionHas('error');
+        $this->assertSame(1, \App\Models\WhatsappReply::count());
+    }
+
     public function test_reliability_fixes_for_whatsapp(): void
     {
         [$me, $lead] = $this->market();

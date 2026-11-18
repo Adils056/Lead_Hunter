@@ -2,11 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\EmailLog;
-use App\Models\InboundReply;
-use App\Models\Task;
 use App\Models\User;
 use App\Services\Autopilot\Notifier;
+use App\Services\Sales\WaitingList;
 use Illuminate\Console\Command;
 
 /**
@@ -22,38 +20,18 @@ class WaitingDigestCommand extends Command
 
     protected $description = 'Morning list of prospects waiting for an answer (unanswered replies, open answer-now tasks), sent to the team';
 
-    public const ANSWER_CATEGORIES = ['interested', 'request_info', 'referral', 'uncertain', 'objection'];
+    public const ANSWER_CATEGORIES = WaitingList::ANSWER_CATEGORIES;
 
-    public function handle(Notifier $notifier): int
+    public function handle(Notifier $notifier, WaitingList $waiting): int
     {
-        $items = collect();
-
-        // e-mail replies from people that nobody answered by e-mail since
-        foreach (InboundReply::with('lead.company')->whereIn('category', self::ANSWER_CATEGORIES)->where('received_at', '>=', now()->subDays(30))->get() as $r) {
-            if (!$r->lead || in_array($r->lead->lifecycle_stage, ['won', 'lost', 'not_a_fit', 'opted_out'], true)) {
-                continue;
-            }
-            $answered = EmailLog::where('lead_id', $r->lead_id)->where('direction', 'outbound')->where('occurred_at', '>', $r->received_at)->exists()
-                || \App\Models\CampaignRecipient::where('lead_id', $r->lead_id)->where('sent_at', '>', $r->received_at)->exists();
-            if (!$answered) {
-                $items->push(['lead' => $r->lead, 'what' => 'replied by e-mail (' . str_replace('_', ' ', $r->category) . ')', 'since' => $r->received_at]);
-            }
-        }
-        // the tasks LeadPilot made when someone engaged, still open
-        foreach (Task::with('lead.company')->where('status', 'pending')->whereDate('due_date', '<=', now()->toDateString())
-            ->where(fn ($q) => $q->where('title', 'like', '%answer now%')->orWhere('title', 'like', '%respond today%')->orWhere('title', 'like', '%follow up today%'))->get() as $t) {
-            if ($t->lead && !$items->contains(fn ($i) => $i['lead']->id === $t->lead_id)) {
-                $items->push(['lead' => $t->lead, 'what' => mb_strtolower(explode(':', $t->title)[0]), 'since' => $t->created_at]);
-            }
-        }
+        $items = $waiting->items();
 
         if ($items->isEmpty()) {
             $this->info('Nobody is waiting for an answer.');
 
             return 0;
         }
-        $items = $items->sortBy('since')->values();
-        $line = fn ($i) => ($i['lead']->company?->name ?? $i['lead']->full_name) . ': ' . $i['what'] . ', waiting ' . $i['since']->diffForHumans(null, true);
+        $line = fn ($i) => WaitingList::line($i);
         $list = $items->take(10)->map($line)->implode("\n");
         $count = $items->count();
         $payload = [

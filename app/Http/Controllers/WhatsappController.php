@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\WhatsappInboundMessage;
 use App\Models\WhatsappMessage;
+use App\Models\WhatsappReply;
+use App\Services\Outreach\WhatsappAnswer;
 use App\Services\Outreach\WhatsappInbox;
 use App\Services\Outreach\WhatsappOutreach;
 use App\Support\Like;
@@ -66,7 +68,7 @@ class WhatsappController extends Controller
         return view('whatsapp.index', compact('tab', 'q', 'items', 'stats'));
     }
 
-    public function show(WhatsappMessage $message)
+    public function show(WhatsappMessage $message, WhatsappAnswer $answer)
     {
         $message->load(['lead.company', 'company']);
         // the conversation belongs to the lead: whoever may not open the lead may not read its messages
@@ -75,11 +77,27 @@ class WhatsappController extends Controller
         // everything we sent to this business (the first message and any to a number they gave us), and every answer
         $sent = WhatsappMessage::where(fn ($w) => $message->company_id ? $w->where('company_id', $message->company_id) : $w->whereKey($message->id))->get();
         $received = WhatsappInboundMessage::whereIn('whatsapp_message_id', $sent->pluck('id'))->get();
+        $answers = WhatsappReply::with('user')->whereIn('whatsapp_message_id', $sent->pluck('id'))->get();
         $timeline = $sent->map(fn ($m) => ['out' => true, 'at' => $m->sent_at ?? $m->created_at, 'm' => $m])
             ->concat($received->map(fn ($m) => ['out' => false, 'at' => $m->created_at, 'm' => $m]))
+            ->concat($answers->map(fn ($m) => ['out' => true, 'answer' => true, 'at' => $m->sent_at ?? $m->created_at, 'm' => $m]))
             ->sortBy(fn ($e) => $e['at']?->getTimestamp() ?? 0)->values();
 
-        return view('whatsapp.show', compact('message', 'timeline'));
+        $canAnswer = $message->lead ? auth()->user()->can('update', $message->lead) : auth()->user()->isAdmin();
+        $blocked = $answer->blockReason($message);
+        $draft = $canAnswer && !$blocked ? $answer->draft($message) : null;
+
+        return view('whatsapp.show', compact('message', 'timeline', 'canAnswer', 'blocked', 'draft'));
+    }
+
+    /** Send a salesperson's answer to someone who replied. A person presses Send every time; nothing is automatic. */
+    public function answer(Request $request, WhatsappMessage $message, WhatsappAnswer $answer)
+    {
+        $data = $request->validate(['body' => 'required|string|min:2|max:1500']);
+        $message->lead ? $this->authorize('update', $message->lead) : abort_unless($request->user()->isAdmin(), 403);
+        [$ok, $text] = $answer->send($message, $data['body'], $request->user());
+
+        return $ok ? back()->with('success', $text) : back()->withInput()->with('error', $text);
     }
 
     public function label(Request $request, WhatsappInboundMessage $inbound, WhatsappInbox $inbox)

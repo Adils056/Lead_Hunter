@@ -327,6 +327,10 @@ return [
 
     'alerts' => [
         'webhook_url' => env('LEADPILOT_ALERT_WEBHOOK_URL'),
+        // a reply left without an answer this long is escalated once to these users (comma-separated e-mails of
+        // LeadPilot users, e.g. the CEO); empty = every active admin
+        'escalate_after_hours' => (int) env('LEADPILOT_ESCALATE_AFTER_HOURS', 24),
+        'escalate_to' => env('LEADPILOT_ESCALATE_TO'),
         'twilio' => [
             'sid' => env('TWILIO_SID'),
             'token' => env('TWILIO_TOKEN'),
@@ -385,6 +389,12 @@ return [
         'max_first_touch_per_day' => (int) env('LEADPILOT_MAX_FIRST_TOUCH_PER_DAY', 25),
         // Warm-up: for the first `days` after outreach went live, first touches are capped at `cap` per day.
         'ramp' => ['days' => (int) env('LEADPILOT_RAMP_DAYS', 3), 'cap' => (int) env('LEADPILOT_RAMP_CAP', 10)],
+        // While new businesses wait for a first e-mail, follow-ups use at most this share of the daily send limit;
+        // the rest is kept for first e-mails until `reserve_release_hour` (company time), then any unused part is freed.
+        'follow_up_share' => (float) env('LEADPILOT_FOLLOW_UP_SHARE', 0.6),
+        'reserve_release_hour' => (int) env('LEADPILOT_RESERVE_RELEASE_HOUR', 15),
+        // No new first-e-mail drafts while this many days of them (x the daily first-touch cap) already wait to be sent.
+        'first_touch_backlog_days' => (int) env('LEADPILOT_FIRST_TOUCH_BACKLOG_DAYS', 3),
         'sending_hours' => [9, 17],         // local time, Mon-Fri
         'sending_days' => [1, 2, 3, 4, 5],
     ],
