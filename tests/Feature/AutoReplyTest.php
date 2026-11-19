@@ -183,6 +183,12 @@ class AutoReplyTest extends TestCase
         $this->emailReply($lead, 'What would it cost?', 'request_info');
         $this->ai = [['action' => 'reply', 'reply' => 'It costs about 2,000 for a full site.', 'reason' => 'price']];
         $this->artisan('leadpilot:auto-reply', ['--dry-run' => true])->expectsOutputToContain('template, AI answer rejected: a price-like number')->assertSuccessful();
+
+        // seen live: "We'll email you the details" is a promise nobody keeps; only the call is offered
+        $this->ai = [['action' => 'reply', 'reply' => "Thanks for letting us know. We\u{2019}ll\u{200B}email you the details. Pick a time: https://calendly.com/ismail/30min", 'reason' => 'ok']];
+        $this->artisan('leadpilot:auto-reply', ['--dry-run' => true])->expectsOutputToContain('AI answer rejected: a promise to send something')->assertSuccessful();
+        $this->assertNull(app(\App\Services\Sales\AutoReplier::class)->safe('We will send the proposal tomorrow.', $lead, '', 'email'));
+        $this->assertSame("Glad to help. I'm happy to share more on a call.", app(\App\Services\Sales\AutoReplier::class)->safe("Glad to help.\u{00A0}I'm happy to share more on a call.", $lead, '', 'email'));
     }
 
     public function test_without_the_ai_the_safe_answer_still_goes_out(): void
