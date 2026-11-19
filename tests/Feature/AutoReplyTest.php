@@ -35,6 +35,9 @@ class AutoReplyTest extends TestCase
     /** how many more times the fake WhatsApp gateway refuses */
     protected int $gatewayDown = 0;
 
+    /** the gateway cannot send to this contact at all (a chat using a WhatsApp privacy id) */
+    protected bool $lidContact = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -53,6 +56,9 @@ class AutoReplyTest extends TestCase
                     $this->gatewayDown--;
 
                     return Http::response(['message' => 'Trying to access array offset on value of type null'], 500);
+                }
+                if ($this->lidContact) {
+                    return Http::response(['message' => 'Trying to access array offset on value of type bool', 'exception' => 'ErrorException'], 500);
                 }
 
                 return Http::response(['message_status' => 'Success'], 200);
@@ -280,6 +286,25 @@ class AutoReplyTest extends TestCase
         $this->assertSame(1, Task::where('lead_id', $other->id)->where('title', 'Answer now: LeadPilot left this reply to you')->count());
         $this->artisan('leadpilot:auto-reply')->assertSuccessful();
         $this->assertSame(3, $row->fresh()->attempts, 'never a fourth try');
+    }
+
+    public function test_a_contact_the_gateway_can_never_reach_goes_to_a_person_at_once(): void
+    {
+        $this->on();
+        $lead = $this->lead('New Crescent School');
+        $msg = WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $lead->company_id, 'to_number' => '966534232751', 'number_source' => 'mobile_number',
+            'body' => 'Hi, here is your website report.', 'status' => 'sent', 'sent_at' => now()->subDay()]);
+        $in = WhatsappInboundMessage::create(['whatsapp_message_id' => $msg->id, 'lead_id' => $lead->id, 'from_number' => '966534232751', 'body' => 'Thank you for your kind interest', 'action' => 'reply']);
+        $in->forceFill(['created_at' => now()->subMinutes(15)])->save();
+        $this->lidContact = true;
+        $this->ai = [['action' => 'reply', 'reply' => 'Glad to hear from you! Pick a time for a 15-minute call: https://calendly.com/ismail/30min', 'reason' => 'ok']];
+
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('Left to a person: New Crescent School (whatsapp): left to a person: the WhatsApp gateway cannot send to this contact')->assertSuccessful();
+        $row = AutoReply::firstOrFail();
+        $this->assertSame(['held', 1], [$row->status, $row->attempts], 'no retries that would only delay the answer');
+        $task = Task::where('lead_id', $lead->id)->where('title', 'Answer now: LeadPilot left this reply to you')->firstOrFail();
+        $this->assertStringContainsString('answer from the phone', $task->description);
+        $this->assertStringContainsString('Glad to hear from you!', $task->description, 'the ready answer is in the task, to copy');
     }
 
     public function test_answers_stop_after_the_limit_and_once_a_meeting_is_booked(): void
