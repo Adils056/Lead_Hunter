@@ -142,7 +142,7 @@ class AutoReplyTest extends TestCase
         $angry = $this->lead('Angry Dental');
         $this->emailReply($angry, 'Who gave you my email? I will report you to my lawyer.', 'objection');
         $polite = $this->lead('Polite No');
-        $this->emailReply($polite, 'Thanks but we already have an agency.', 'uncertain');
+        $this->emailReply($polite, 'Thanks, but we are not interested.', 'uncertain');
         $stop = $this->lead('Stop Spa');
         $this->emailReply($stop, 'unsubscribe', 'unsubscribe');
         $this->ai = [['action' => 'human', 'reply' => '', 'reason' => 'threatens legal action'], ['action' => 'none', 'reply' => '', 'reason' => 'they declined']];
@@ -152,6 +152,37 @@ class AutoReplyTest extends TestCase
         $this->assertCount(0, $this->prospectMails());
         $this->assertSame(1, Task::where('lead_id', $angry->id)->where('title', 'Answer now: LeadPilot left this reply to you')->count());
         $this->assertSame(0, AutoReply::where('lead_id', $stop->id)->count(), 'an unsubscribe is never even read for an answer');
+    }
+
+    public function test_a_markdown_or_shortened_link_and_small_numbers_are_accepted_and_a_wrong_no_goes_to_a_person(): void
+    {
+        $this->on();
+        $lead = $this->lead('New Crescent School');
+        $this->emailReply($lead, 'Yes, can you share more about the 3 fixes?', 'request_info');
+        $this->ai = [['action' => 'reply', 'reply' => "Hi Nadia,\n\n**Thanks!** The 3 fixes take about 24 hours to explain properly. [Pick a time](https://calendly.com/ismail/30min) for a 15-minute call.\n\nIsmail", 'reason' => 'info']];
+
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('1 answered')->assertSuccessful();
+        $body = $this->prospectMails()[0]->getOriginalMessage()->getTextBody();
+        $this->assertSame('gemini', AutoReply::value('writer'), 'the AI answer is used, not the fixed one');
+        $this->assertStringContainsString('The 3 fixes take about 24 hours', $body);
+        $this->assertStringContainsString('Pick a time: https://calendly.com/ismail/30min?utm_source=leadpilot&utm_medium=email&utm_content=lp' . $lead->id, $body);
+        $this->assertStringNotContainsString('**', $body);
+        $this->assertSame(1, substr_count($body, 'calendly.com'));
+
+        // the AI reads interest as a "no": a person decides instead of nobody answering
+        $other = $this->lead('Tacobay');
+        $this->emailReply($other, 'Yes please call me tomorrow', 'interested');
+        $this->ai = [['action' => 'none', 'reply' => '', 'reason' => 'not interested']];
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('Left to a person: Tacobay (email): left to a person: AI thinks no answer is needed')->assertSuccessful();
+        $this->assertSame(1, Task::where('lead_id', $other->id)->where('title', 'Answer now: LeadPilot left this reply to you')->count());
+    }
+
+    public function test_a_dry_run_says_why_the_fixed_answer_was_used(): void
+    {
+        $lead = $this->lead('Sidekick Labs');
+        $this->emailReply($lead, 'What would it cost?', 'request_info');
+        $this->ai = [['action' => 'reply', 'reply' => 'It costs about 2,000 for a full site.', 'reason' => 'price']];
+        $this->artisan('leadpilot:auto-reply', ['--dry-run' => true])->expectsOutputToContain('template, AI answer rejected: a price-like number')->assertSuccessful();
     }
 
     public function test_without_the_ai_the_safe_answer_still_goes_out(): void
