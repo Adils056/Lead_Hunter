@@ -121,13 +121,16 @@ class AutoReplier
 
         $ours = CampaignRecipient::where('lead_id', $lead->id)->whereNotNull('sent_at')->latest('sent_at')->value('personalized_body');
         $theirs = InboundReply::where('lead_id', $lead->id)->whereIn('category', self::ANSWERABLE)->where('received_at', '>=', now()->subDays(30))
-            ->oldest('received_at')->get()->map(fn ($r) => $this->clean((string) $r->body_text))->implode("\n---\n");
+            ->oldest('received_at')->get()->map(fn ($r) => $this->clean((string) $r->body_text))->filter()->implode("\n---\n");
+        if ($theirs === '') {
+            return $this->hold('email', $reply->id, $lead, ['action' => 'human', 'reason' => 'no text of theirs to read (only quoted history or an attachment)', 'writer' => 'rules'], $dry, $who);
+        }
         $c = $this->compose('email', $lead, $theirs, (string) $ours, $reply->received_at);
         if ($c['action'] !== 'reply') {
             return $this->hold('email', $reply->id, $lead, $c, $dry, $who);
         }
         if ($dry) {
-            return ['sent', "{$who} (e-mail, {$c['writer']}): " . Str::limit(str_replace("\n", ' ', $c['reply']), 220)];
+            return ['sent', "{$who} (e-mail, {$c['writer']}" . ($c['writer'] === 'template' ? ", {$c['reason']}" : '') . '): ' . Str::limit(str_replace("\n", ' ', $c['reply']), 400)];
         }
 
         try {
@@ -182,7 +185,7 @@ class AutoReplier
             return $this->hold('whatsapp', $in->id, $lead, $c, $dry, $who);
         }
         if ($dry) {
-            return ['sent', "{$who} (WhatsApp, {$c['writer']}): " . Str::limit(str_replace("\n", ' ', $c['reply']), 220)];
+            return ['sent', "{$who} (WhatsApp, {$c['writer']}" . ($c['writer'] === 'template' ? ", {$c['reason']}" : '') . '): ' . Str::limit(str_replace("\n", ' ', $c['reply']), 400)];
         }
         [$ok, $text] = $this->whatsapp->send($msg, $c['reply'], null);
         if (!$ok) {
@@ -259,43 +262,71 @@ class AutoReplier
         $action = in_array($data['action'] ?? null, ['reply', 'human', 'none'], true) ? $data['action'] : null;
         $reason = mb_substr(trim((string) ($data['reason'] ?? '')), 0, 200);
 
-        if ($action === 'none' || $action === 'human') {
-            return ['action' => $action, 'reason' => $reason ?: $action, 'writer' => (string) $ai['provider']];
+        $rules = app(ReplyClassifier::class)->classify($theirs)['category'];
+        $declined = in_array($rules, ['not_interested', 'unsubscribe', 'out_of_office'], true);
+        if ($action === 'human') {
+            return ['action' => 'human', 'reason' => $reason ?: 'human', 'writer' => (string) $ai['provider']];
+        }
+        if ($action === 'none') {
+            // a lead is lost if the AI wrongly reads interest as a "no": only a "no" the rules also see is left unanswered
+            return $declined
+                ? ['action' => 'none', 'reason' => $reason ?: 'none', 'writer' => (string) $ai['provider']]
+                : ['action' => 'human', 'reason' => 'AI thinks no answer is needed (' . ($reason ?: 'none') . '), the rules do not: a person decides', 'writer' => (string) $ai['provider']];
         }
         if ($action === 'reply' && ($text = $this->safe((string) ($data['reply'] ?? ''), $lead, $link, $channel))) {
             return ['action' => 'reply', 'reply' => $text, 'reason' => $reason, 'writer' => (string) $ai['provider']];
         }
         // no AI answer, or one that broke the rules: the fixed safe answer, which only thanks them and offers the call
-        $rules = app(ReplyClassifier::class)->classify($theirs)['category'];
-        if (in_array($rules, ['not_interested', 'unsubscribe', 'out_of_office'], true)) {
+        if ($declined) {
             return ['action' => 'none', 'reason' => "rules read it as {$rules}", 'writer' => 'template'];
         }
 
-        return ['action' => 'reply', 'reply' => $this->template($channel, $lead, $theirs, $link, $late), 'reason' => $ai ? 'AI answer broke the rules; safe answer sent' : 'AI unavailable; safe answer sent', 'writer' => 'template'];
+        return ['action' => 'reply', 'reply' => $this->template($channel, $lead, $theirs, $link, $late), 'writer' => 'template',
+            'reason' => $ai ? 'AI answer rejected: ' . $this->rejected : 'no AI answered'];
     }
 
-    /** The AI's answer, cleaned, or null when it breaks a rule. */
+    /** Why the last AI answer was rejected (shown in the dry run and stored with the answer). */
+    protected string $rejected = '';
+
+    /** The AI's answer, cleaned, or null when it breaks a rule ($this->rejected says which). */
     public function safe(string $text, Lead $lead, string $link, string $channel): ?string
     {
-        $text = trim(preg_replace("/\n{3,}/", "\n\n", str_replace("\r", '', $text)));
-        if ($text === '' || mb_strlen($text) > ($channel === 'whatsapp' ? 600 : 900) || preg_match('/[\[\]{}]|lorem|\bTODO\b/i', $text)) {
+        $no = function (string $why) {
+            $this->rejected = $why;
+
             return null;
+        };
+        $text = str_replace(["\r", '**', '__'], '', $text);
+        // a Markdown link [pick a time](url) becomes plain text with the url
+        $text = preg_replace('/\[([^\]]{1,80})\]\((https?:\/\/[^)\s]+)\)/', '$1: $2', $text);
+        // our booking link as the AI wrote it (shortened, without or with changed tracking) becomes exactly our link
+        if (($base = BookingLink::base()) && $link !== '') {
+            $text = preg_replace('#(?:https?://)?' . preg_quote(preg_replace('#^https?://#', '', $base), '#') . '(?:\?[^\s)]*)?#i', $link, $text);
+        }
+        $text = trim(preg_replace("/\n{3,}/", "\n\n", $text));
+        if ($text === '') {
+            return $no('empty');
+        }
+        if (mb_strlen($text) > ($channel === 'whatsapp' ? 700 : 1000)) {
+            return $no('too long');
+        }
+        if (preg_match('/[\[\]{}]|lorem|\bTODO\b/i', $text)) {
+            return $no('a placeholder in brackets');
         }
         // no price, money or promise
-        if (preg_match('/[$€£₹]|\b(usd|aed|sar|pkr|qar|omr|kwd|gbp|eur|rs\.?|rupees?|dirhams?|riyals?|dollars?|discount|guarantee[ds]?|refund)\b/iu', $text)) {
-            return null;
+        if (preg_match('/[$€£₹]|\b(usd|aed|sar|pkr|qar|omr|kwd|gbp|eur|rs\.?|rupees?|dirhams?|riyals?|dollars?|discount|guarantee[ds]?|refund)\b/iu', $text, $m)) {
+            return $no('money or a promise ("' . $m[0] . '")');
         }
         // no link but ours
         $allowed = array_filter([$link, BookingLink::base(), config('leadpilot.agency.website')]);
         $withoutOurs = str_replace($allowed, '', $text);
-        if (preg_match('#https?://|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|pk|ae|sa)\b#i', $withoutOurs)) {
-            return null;
+        if (preg_match('#https?://\S+|www\.\S+|\b[a-z0-9-]+\.(com|net|org|io|co|pk|ae|sa)\b#i', $withoutOurs, $m)) {
+            return $no('a link that is not ours (' . mb_substr($m[0], 0, 40) . ')');
         }
-        // no number, except "15-minute" and a number that is part of the company's name
-        $plain = preg_replace('/\b\d{1,2}[- ]?(min|mins|minute|minutes)\b/i', '', $withoutOurs);
-        $plain = str_ireplace(array_filter([(string) $lead->company?->name]), '', $plain);
-        if (preg_match('/\d/', $plain)) {
-            return null;
+        // no price-like number: three or more digits, a percentage, "5k", "2,000"; small numbers ("3 fixes", "24 hours") are fine
+        $plain = str_ireplace(array_filter([(string) $lead->company?->name]), '', $withoutOurs);
+        if (preg_match('/\d{3,}|\d[\d,.]*\s*(%|percent|k\b|lakh|million)|\d,\d/iu', $plain, $m)) {
+            return $no('a price-like number ("' . $m[0] . '")');
         }
         if ($link !== '' && !str_contains($text, $link)) {
             $text = rtrim($text) . "\n\n" . ($channel === 'whatsapp' ? "Pick a time here: {$link}" : "You can pick a time here: {$link}");
