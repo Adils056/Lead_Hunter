@@ -133,6 +133,9 @@ class ReplyOutcomeService
 
     protected function replyApproval(InboundReply $reply, Lead $lead, string $category, string $draft): void
     {
+        if ($this->answeredAutomatically($reply)) {
+            return;
+        }
         app(ApprovalService::class)->request('reply_response', "reply-response:{$reply->id}", [
             'title' => 'Approve response to ' . ($lead->company?->name ?? $reply->from_email) . " ({$category})",
             'summary' => "The prospect replied ({$category}). A suggested response is ready; edit it (especially any prices or commitments) and approve to send.",
@@ -144,8 +147,17 @@ class ReplyOutcomeService
         ], $reply);
     }
 
+    /** LeadPilot already answered this reply by itself (AutoReplier): no second answer, by approval or otherwise. */
+    protected function answeredAutomatically(InboundReply $reply): bool
+    {
+        return \App\Models\AutoReply::where('channel', 'email')->where('source_id', $reply->id)->where('status', 'sent')->exists();
+    }
+
     protected function proposeMeeting(InboundReply $reply, Lead $lead): void
     {
+        if ($this->answeredAutomatically($reply)) {
+            return;
+        }
         $mode = app(\App\Services\Autopilot\AutonomyPolicyService::class)->mode('meeting.propose_slots');
         if ($mode === 'prohibited') {
             return; // the high-priority task created above is the only action
@@ -158,7 +170,9 @@ class ReplyOutcomeService
 
         if ($mode === 'automatic') {
             try {
-                app(\App\Services\Outreach\OutreachMailer::class)->sendToLead($lead, 'Re: ' . preg_replace('/^(re:\s*)+/i', '', (string) $reply->subject), $body, $reply->message_id);
+                $subject = 'Re: ' . preg_replace('/^(re:\s*)+/i', '', (string) $reply->subject);
+                $msgId = app(\App\Services\Outreach\OutreachMailer::class)->sendToLead($lead, $subject, $body, $reply->message_id);
+                \App\Services\Outreach\OutreachMailer::logOutbound($lead->id, (string) $lead->email, $subject, $body, $msgId, ['meeting_slots' => true]);
 
                 return;
             } catch (\Throwable $e) {

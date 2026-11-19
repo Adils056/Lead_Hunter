@@ -298,7 +298,7 @@ return [
         'reply.referral_contact' => 'automatic',  // an e-mail or number given in a WhatsApp reply is contacted at once, once
         'outreach.whatsapp' => 'automatic',       // one WhatsApp per company with the report PDF (only when WHATSAPP_OUTREACH=true)
         'reply.classify' => 'automatic',
-        'reply.auto_respond' => 'prohibited',     // replies to humans are always reviewed
+        'reply.auto_respond' => 'prohibited',     // automatic = LeadPilot answers prospects' replies itself (AutoReplier, safe rules)
         'crm.stage_update' => 'automatic',
         'meeting.propose_slots' => 'approval',
         'proposal.send' => 'approval',            // never automatic: commercial commitment
@@ -330,6 +330,16 @@ return [
     'calendly' => [
         'token' => env('CALENDLY_TOKEN'),
         'api' => env('CALENDLY_API_URL', 'https://api.calendly.com'),
+    ],
+
+    // Automatic answers to prospects who replied (on only when the autonomy policy reply.auto_respond is automatic):
+    // the AI (free Gemini first) reads their message and answers it, offering a 15-minute call with the booking link.
+    'auto_reply' => [
+        'delay_minutes' => (int) env('LEADPILOT_AUTO_REPLY_DELAY', 3),               // e-mail: a short pause, like a person
+        'whatsapp_delay_minutes' => (int) env('LEADPILOT_AUTO_REPLY_WA_DELAY', 10),  // time to answer from the phone first
+        'max_per_lead' => (int) env('LEADPILOT_AUTO_REPLY_MAX', 3),                  // then a person continues the conversation
+        'min_gap_minutes' => 30,
+        'lookback_days' => 30,
     ],
 
     'alerts' => [

@@ -1041,6 +1041,8 @@ Schedule::command('leadpilot:waiting-digest')->days([1, 2, 3, 4, 5, 6])->at('09:
 // every hour in office hours: a reply left 24 h without an answer is escalated once (LEADPILOT_ESCALATE_TO, else admins)
 Schedule::command('leadpilot:escalate-waiting')->days([1, 2, 3, 4, 5, 6])->hourlyAt(50)->between('9:00', '20:00')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(30);
 // Calendly bookings become meetings on their leads (stage, stopped follow-ups, tasks, alerts); nothing without CALENDLY_TOKEN
+// prospects who replied get an answer within minutes (only when the policy reply.auto_respond is automatic)
+Schedule::command('leadpilot:auto-reply')->everyFiveMinutes()->withoutOverlapping(10)->runInBackground();
 Schedule::command('leadpilot:calendly-sync')->everyTenMinutes()->withoutOverlapping(15)->runInBackground();
 Schedule::command('leadpilot:whatsapp-outreach')->everyThirtyMinutes()->withoutOverlapping(25)->runInBackground();
 Schedule::command('leadpilot:build-reports --limit=25 --seconds=420')->dailyAt('05:40')->timezone(config('leadpilot.timezone', 'Asia/Karachi'))->withoutOverlapping(15)->runInBackground();
