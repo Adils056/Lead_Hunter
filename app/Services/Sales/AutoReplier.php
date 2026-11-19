@@ -111,6 +111,9 @@ class AutoReplier
 
     public const MAX_ATTEMPTS = 3;
 
+    /** EZIMK's own error for a contact it cannot send to (a chat using a WhatsApp privacy id): the same on every try. */
+    public const GATEWAY_CANNOT_REACH = '/array offset on value of type bool/i';
+
     /** @return array{0: string, 1: string}|null [sent|held|skipped, line] or null to look again later */
     protected function email(InboundReply $reply, bool $dry): ?array
     {
@@ -199,6 +202,11 @@ class AutoReplier
             return ['sent', "{$who} (WhatsApp, {$c['writer']}" . ($c['writer'] === 'template' ? ", {$c['reason']}" : '') . '): ' . Str::limit(str_replace("\n", ' ', $c['reply']), 400)];
         }
         [$ok, $text] = $this->whatsapp->send($msg, $c['reply'], null);
+        if (!$ok && preg_match(self::GATEWAY_CANNOT_REACH, $text)) {
+            // seen live (19 Nov): the contact chats with a WhatsApp privacy id ("@lid"); EZIMK cannot send to it and fails
+            // the same way every time, so retrying only delays the answer. The phone's WhatsApp can.
+            return $this->hold('whatsapp', $in->id, $lead, ['action' => 'human', 'reason' => 'the WhatsApp gateway cannot send to this contact (WhatsApp privacy id); answer from the phone. Ready answer: ' . $c['reply']], false, $who);
+        }
         if (!$ok) {
             return $this->record('whatsapp', $in->id, $lead, 'failed', mb_substr($text, 0, 200), false, $who);
         }
