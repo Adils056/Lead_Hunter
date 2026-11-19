@@ -44,7 +44,7 @@ class WhatsappReferral
     }
 
     /** Contact what the prospect gave us. Returns one line per address or number: what was done, or why not. */
-    public function handle(WhatsappInboundMessage $in, Lead $lead): array
+    public function handle(WhatsappInboundMessage $in, Lead $lead, bool $dry = false): array
     {
         $found = self::extract($in->body);
         if (!$found['emails'] && !$found['phones']) {
@@ -55,16 +55,16 @@ class WhatsappReferral
         }
         $out = [];
         foreach ($found['emails'] as $email) {
-            $out[] = $this->email($email, $lead, $in);
+            $out[] = $this->email($email, $lead, $in, $dry);
         }
         foreach ($found['phones'] as $raw) {
-            $out[] = $this->whatsapp($raw, $lead, $in);
+            $out[] = $this->whatsapp($raw, $lead, $in, $dry);
         }
 
         return $out;
     }
 
-    protected function email(string $email, Lead $lead, WhatsappInboundMessage $in): string
+    protected function email(string $email, Lead $lead, WhatsappInboundMessage $in, bool $dry = false): string
     {
         $ours = array_filter([strtolower((string) config('mail.from.address')), strtolower((string) \App\Models\OutreachSetting::current()->reply_to_email)]);
         if (in_array($email, $ours, true)) {
@@ -75,8 +75,15 @@ class WhatsappReferral
             return "{$email}: suppressed, not contacted.";
         }
         $existing = Lead::where('email', $email)->first();
-        if ($existing && ($existing->last_contacted_at || EmailLog::where('recipient_email', $email)->where('direction', 'outbound')->exists())) {
-            return "{$email}: already contacted before, not e-mailed again.";
+        // only an e-mail actually sent to this address counts: a lead's last_contacted_at is also set by our WhatsApp
+        // (seen live: Sinag Dental's own address was skipped as "already contacted" although it never got an e-mail)
+        $emailed = EmailLog::where('recipient_email', $email)->where('direction', 'outbound')->exists()
+            || \App\Models\CampaignRecipient::whereNotNull('sent_at')->whereHas('lead', fn ($q) => $q->where('email', $email))->exists();
+        if ($emailed) {
+            return "{$email}: already e-mailed before, not e-mailed again.";
+        }
+        if ($dry) {
+            return "{$email}: would be e-mailed with the report.";
         }
         $to = $existing ?? Lead::create([
             'company_id' => $lead->company_id, 'icp_profile_id' => $lead->icp_profile_id,
@@ -103,7 +110,7 @@ class WhatsappReferral
         return "{$email}: e-mailed with the report.";
     }
 
-    protected function whatsapp(string $raw, Lead $lead, WhatsappInboundMessage $in): string
+    protected function whatsapp(string $raw, Lead $lead, WhatsappInboundMessage $in, bool $dry = false): string
     {
         $c = $lead->company;
         $number = Phone::international($raw, $lead->country ?: $c?->country);
@@ -123,6 +130,9 @@ class WhatsappReferral
         $wa = app(WhatsappOutreach::class);
         if (($why = $wa->blockReason()) && !str_starts_with($why, 'Daily WhatsApp cap')) {
             return "+{$number}: not sent ({$why}).";
+        }
+        if ($dry) {
+            return "+{$number}: would get a WhatsApp.";
         }
         $report = $c?->latestWebsiteReport;
         $shareable = $report && $report->isShareable() && !\App\Models\OutreachSetting::publicUrlIsLocal();
