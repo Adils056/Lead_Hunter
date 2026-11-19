@@ -89,6 +89,14 @@ class OutreachMailer
         return $this->send($lead->email, $lead->contact_status === 'identified' ? (string) $lead->full_name : '', $subject, $body, $inReplyTo);
     }
 
+    /** Record an e-mail we sent to a person, so the reply it answers counts as answered (morning list, escalation, auto-reply). */
+    public static function logOutbound(?int $leadId, string $to, string $subject, string $body, string $messageId, array $meta = []): void
+    {
+        \App\Models\EmailLog::create(['lead_id' => $leadId, 'direction' => 'outbound', 'provider' => config('mail.default', 'smtp'), 'message_id' => $messageId,
+            'sender_email' => config('mail.from.address'), 'recipient_email' => $to, 'subject' => mb_substr($subject, 0, 250),
+            'body_snippet' => mb_substr($body, 0, 250), 'status' => 'sent', 'occurred_at' => now(), 'event_metadata' => $meta ?: null]);
+    }
+
     public function sendReply(InboundReply $reply, string $subject, string $body): string
     {
         abort_if(\App\Models\Suppression::isSuppressed($reply->from_email), 422, 'Recipient is suppressed.');

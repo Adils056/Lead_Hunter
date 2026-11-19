@@ -8,7 +8,7 @@
         'drafting.ai' => 'Polish drafts with AI (facts-only guard)', 'outreach.first_touch' => 'Send the FIRST email to a new prospect', 'outreach.follow_up' => 'Send follow-ups in an approved thread (stops on any reply)',
         'outreach.whatsapp' => 'Send one WhatsApp per business with its website report (only when WHATSAPP_OUTREACH=true)',
         'reply.referral_contact' => 'Contact an e-mail or number a prospect gives in a WhatsApp reply (once each)',
-        'reply.classify' => 'Read & classify replies', 'reply.auto_respond' => 'Answer prospect replies without review', 'crm.stage_update' => 'Move CRM stages from evidence',
+        'reply.classify' => 'Read & classify replies', 'reply.auto_respond' => 'Answer prospect replies without review (AI reads each reply; never prices; complaints go to a person)', 'crm.stage_update' => 'Move CRM stages from evidence',
         'meeting.propose_slots' => 'Offer meeting times', 'proposal.send' => 'Send a proposal (commercial)', 'integration.enable' => 'Enable a new integration', 'spend.over_budget' => 'Spend beyond budget',
     ];
     $locked = ['proposal.send', 'spend.over_budget', 'integration.enable'];

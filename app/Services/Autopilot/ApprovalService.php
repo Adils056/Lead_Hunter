@@ -261,7 +261,12 @@ class ApprovalService
     {
         $reply = InboundReply::findOrFail($req->subject_id);
         $p = (array) $req->payload;
-        $msgId = app(OutreachMailer::class)->sendReply($reply, (string) ($p['subject'] ?? ('Re: ' . $reply->subject)), (string) $p['body']);
+        if (\App\Models\AutoReply::where('channel', 'email')->where('source_id', $reply->id)->where('status', 'sent')->exists()) {
+            return 'Not sent: LeadPilot already answered this reply automatically.';
+        }
+        $subject = (string) ($p['subject'] ?? ('Re: ' . $reply->subject));
+        $msgId = app(OutreachMailer::class)->sendReply($reply, $subject, (string) $p['body']);
+        OutreachMailer::logOutbound($reply->lead_id, (string) $reply->from_email, $subject, (string) $p['body'], $msgId, ['approved_reply' => true]);
         $reply->update(['is_reviewed' => true, 'reviewed_at' => now()]);
 
         return "Reply sent (SMTP accepted, Message-ID {$msgId}).";
@@ -366,7 +371,12 @@ class ApprovalService
     {
         $p = (array) $req->payload;
         $lead = $this->leadOf($req);
+        if ($req->subject_type === (new InboundReply())->getMorphClass()
+            && \App\Models\AutoReply::where('channel', 'email')->where('source_id', $req->subject_id)->where('status', 'sent')->exists()) {
+            return 'Not sent: LeadPilot already answered this reply automatically.';
+        }
         $msgId = app(OutreachMailer::class)->sendToLead($lead, (string) $p['subject'], (string) $p['body'], $p['in_reply_to'] ?? null);
+        OutreachMailer::logOutbound($lead->id, (string) $lead->email, (string) $p['subject'], (string) $p['body'], $msgId, ['meeting_slots' => true]);
 
         return "Meeting times offered (SMTP accepted, Message-ID {$msgId}). No calendar event is created until the prospect confirms.";
     }
