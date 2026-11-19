@@ -411,7 +411,7 @@ Artisan::command('leadpilot:whatsapp-referrals {--dry-run : List what would be c
         if (!$found['emails'] && !$found['phones']) {
             continue;
         }
-        $done = $this->option('dry-run') ? ['would contact: ' . implode(', ', array_merge($found['emails'], $found['phones']))] : $referral->handle($in, $in->lead);
+        $done = $referral->handle($in, $in->lead, (bool) $this->option('dry-run')); // the dry run makes the same checks, sends nothing
         if (!$this->option('dry-run') && $done) {
             \App\Models\AuditLog::record('whatsapp_referral', $in->lead, null, ['inbound_id' => $in->id, 'done' => $done]);
         }

@@ -346,6 +346,15 @@ class WhatsappOutreachTest extends TestCase
             ->assertSessionHas('success', fn ($t) => str_contains($t, 'sinagdental@gmail.com: e-mailed with the report.'));
         $this->assertCount(1, $to());
 
+        // the lead's own address, already reached on WhatsApp but never by e-mail, is still e-mailed (seen live: Sinag Dental)
+        $other = $this->lead($this->clinic('Own Address Dental', ['viewport' => 'fail', 'https' => 'pass'], '0300 7654321'));
+        $other->update(['email' => 'owner.dental@gmail.com', 'last_contacted_at' => now()->subWeek()]);
+        $msg2 = WhatsappMessage::create(['lead_id' => $other->id, 'company_id' => $other->company_id, 'to_number' => '923007654321', 'number_source' => 'mobile_number', 'body' => 'Hi', 'status' => 'sent']);
+        $in2 = \App\Models\WhatsappInboundMessage::create(['whatsapp_message_id' => $msg2->id, 'lead_id' => $other->id, 'from_number' => '923007654321', 'action' => 'reply',
+            'body' => 'Please e-mail owner.dental@gmail.com']);
+        $this->assertSame(['owner.dental@gmail.com: e-mailed with the report.'], app(\App\Services\Outreach\WhatsappReferral::class)->handle($in2, $other->fresh()));
+        $this->assertSame(['owner.dental@gmail.com: already e-mailed before, not e-mailed again.'], app(\App\Services\Outreach\WhatsappReferral::class)->handle($in2, $other->fresh()));
+
         // marking it again (after an undo) does not e-mail twice
         $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'auto_reply']);
         $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'reply']);
@@ -368,10 +377,10 @@ class WhatsappOutreachTest extends TestCase
 
         // replies stored before this existed are followed up by the command, once
         app(AutonomyPolicyService::class)->set('reply.referral_contact', 'automatic');
-        $this->artisan('leadpilot:whatsapp-referrals', ['--dry-run' => true])->expectsOutputToContain('would contact: office@smiledental.example')->assertExitCode(0);
+        $this->artisan('leadpilot:whatsapp-referrals', ['--dry-run' => true])->expectsOutputToContain('office@smiledental.example: would be e-mailed with the report')->assertExitCode(0);
         $this->assertSame(0, Lead::where('email', 'office@smiledental.example')->count());
         $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('office@smiledental.example: e-mailed')->assertExitCode(0);
-        $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('already contacted before')->assertExitCode(0);
+        $this->artisan('leadpilot:whatsapp-referrals')->expectsOutputToContain('already e-mailed before')->assertExitCode(0);
     }
 
     public function test_away_messages_adverts_and_wrong_numbers_are_not_counted_as_replies(): void
