@@ -52,10 +52,10 @@ class AutoReplier
         return $this->policy->isAutomatic('reply.auto_respond');
     }
 
-    /** @return array{sent: array, held: array, skipped: array, waiting: int, disabled?: string} */
+    /** @return array{sent: array, held: array, skipped: array, failed: array, waiting: int, disabled?: string} */
     public function run(bool $dry = false, int $limit = 5): array
     {
-        $out = ['sent' => [], 'held' => [], 'skipped' => [], 'waiting' => 0];
+        $out = ['sent' => [], 'held' => [], 'skipped' => [], 'failed' => [], 'waiting' => 0];
         if (!$dry && !$this->enabled()) {
             return $out + ['disabled' => 'Automatic answers are off: set "Answer prospect replies without review" (reply.auto_respond) to Automatic in Autopilot → Autonomy policy.'];
         }
@@ -68,7 +68,7 @@ class AutoReplier
         // e-mail replies
         $emails = InboundReply::with('lead.company')->whereIn('category', self::ANSWERABLE)->whereNotNull('lead_id')
             ->whereBetween('received_at', [$since, $ready])
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('auto_replies')->where('auto_replies.channel', 'email')->whereColumn('auto_replies.source_id', 'inbound_replies.id'))
+            ->whereNotExists(fn ($q) => $this->handled($q, 'email', 'inbound_replies.id'))
             ->oldest('received_at')->limit(50)->get();
         foreach ($emails as $reply) {
             if ($done >= $limit) {
@@ -84,7 +84,7 @@ class AutoReplier
         // WhatsApp replies from people (machines' greetings, wrong numbers and STOPs are labelled otherwise and left out)
         $wa = WhatsappInboundMessage::with('lead.company')->where('action', 'reply')->whereNotNull('whatsapp_message_id')
             ->whereBetween('created_at', [$since, $waReady])
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('auto_replies')->where('auto_replies.channel', 'whatsapp')->whereColumn('auto_replies.source_id', 'whatsapp_inbound_messages.id'))
+            ->whereNotExists(fn ($q) => $this->handled($q, 'whatsapp', 'whatsapp_inbound_messages.id'))
             ->oldest('id')->limit(50)->get();
         foreach ($wa as $in) {
             if ($done >= $limit) {
@@ -99,6 +99,17 @@ class AutoReplier
 
         return $out;
     }
+
+    /** Messages already dealt with: answered, held or skipped for good, or failed just now (tried again later, a few times). */
+    protected function handled($q, string $channel, string $column)
+    {
+        return $q->selectRaw('1')->from('auto_replies')->where('auto_replies.channel', $channel)->whereColumn('auto_replies.source_id', $column)
+            ->where(fn ($w) => $w->where('auto_replies.status', '!=', 'failed')
+                ->orWhere('auto_replies.attempts', '>=', self::MAX_ATTEMPTS)
+                ->orWhere('auto_replies.updated_at', '>', now()->subMinutes(20)));
+    }
+
+    public const MAX_ATTEMPTS = 3;
 
     /** @return array{0: string, 1: string}|null [sent|held|skipped, line] or null to look again later */
     protected function email(InboundReply $reply, bool $dry): ?array
@@ -146,7 +157,7 @@ class AutoReplier
             $req->update(['status' => 'cancelled', 'execution_result' => 'Answered automatically by LeadPilot.']);
         }
         $this->closeTasks($lead);
-        $this->record('email', $reply->id, $lead, 'sent', null, false, $who, $c);
+        $this->record('email', $reply->id, $lead, 'sent', $c['writer'] === 'template' ? $c['reason'] : null, false, $who, $c);
 
         return ['sent', "{$who} (e-mail)"];
     }
@@ -192,7 +203,7 @@ class AutoReplier
             return $this->record('whatsapp', $in->id, $lead, 'failed', mb_substr($text, 0, 200), false, $who);
         }
         $this->closeTasks($lead);
-        $this->record('whatsapp', $in->id, $lead, 'sent', null, false, $who, $c);
+        $this->record('whatsapp', $in->id, $lead, 'sent', $c['writer'] === 'template' ? $c['reason'] : null, false, $who, $c);
 
         return ['sent', "{$who} (WhatsApp)"];
     }
@@ -361,7 +372,7 @@ class AutoReplier
         return implode("\n\n", $lines);
     }
 
-    protected function hold(string $channel, int $sourceId, Lead $lead, array $c, bool $dry, string $who): array
+    protected function hold(string $channel, int $sourceId, Lead $lead, array $c, bool $dry, string $who, bool $record = true): array
     {
         if ($c['action'] === 'none') {
             return $this->record($channel, $sourceId, $lead, 'skipped', 'no answer needed: ' . $c['reason'], $dry, $who);
@@ -373,6 +384,9 @@ class AutoReplier
                 'description' => 'Not answered automatically: ' . $c['reason'],
             ]);
         }
+        if (!$record) {
+            return ['held', "{$who} ({$channel}): left to a person: {$c['reason']}"];
+        }
 
         return $this->record($channel, $sourceId, $lead, 'held', 'left to a person: ' . $c['reason'], $dry, $who);
     }
@@ -380,13 +394,18 @@ class AutoReplier
     protected function record(string $channel, int $sourceId, ?Lead $lead, string $status, ?string $reason, bool $dry, string $who, array $c = []): array
     {
         if (!$dry) {
-            AutoReply::firstOrCreate(['channel' => $channel, 'source_id' => $sourceId], [
-                'lead_id' => $lead?->id, 'status' => $status, 'reason' => $reason ? mb_substr($reason, 0, 300) : null,
-                'body' => $c['reply'] ?? null, 'writer' => $c['writer'] ?? null,
-            ]);
+            $row = AutoReply::firstOrNew(['channel' => $channel, 'source_id' => $sourceId]);
+            $attempts = $row->exists ? $row->attempts + 1 : 1;
+            $row->fill(['lead_id' => $lead?->id, 'status' => $status, 'attempts' => $attempts, 'reason' => $reason ? mb_substr($reason, 0, 300) : null,
+                'body' => $c['reply'] ?? $row->body, 'writer' => $c['writer'] ?? $row->writer])->save();
+            $row->touch();
+            // refused every time: a person answers instead
+            if ($status === 'failed' && $attempts >= self::MAX_ATTEMPTS && $lead) {
+                $this->hold($channel, $sourceId, $lead, ['action' => 'human', 'reason' => "could not be sent after {$attempts} tries ({$reason})"], false, $who, false);
+            }
         }
 
-        return [$status === 'sent' ? 'sent' : ($status === 'skipped' ? 'skipped' : 'held'), "{$who} ({$channel}): " . ($reason ?? $status)];
+        return [in_array($status, ['sent', 'skipped', 'failed'], true) ? $status : 'held', "{$who} ({$channel}): " . ($reason ?? $status)];
     }
 
     protected function closeTasks(Lead $lead): void

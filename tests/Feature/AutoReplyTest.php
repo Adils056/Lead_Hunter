@@ -32,6 +32,9 @@ class AutoReplyTest extends TestCase
     /** what the fake Gemini answers next */
     protected array $ai = [];
 
+    /** how many more times the fake WhatsApp gateway refuses */
+    protected int $gatewayDown = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -46,6 +49,12 @@ class AutoReplyTest extends TestCase
                 return Http::response(['candidates' => [['content' => ['parts' => [['text' => json_encode(array_shift($this->ai) ?? [])]]]]], 'usageMetadata' => ['totalTokenCount' => 50]]);
             }
             if (str_contains($request->url(), 'ezimk.com')) {
+                if ($this->gatewayDown > 0) {
+                    $this->gatewayDown--;
+
+                    return Http::response(['message' => 'Trying to access array offset on value of type null'], 500);
+                }
+
                 return Http::response(['message_status' => 'Success'], 200);
             }
 
@@ -228,6 +237,49 @@ class AutoReplyTest extends TestCase
         WhatsappInboundMessage::whereIn('id', [$stop->id, $again->id])->update(['created_at' => now()->subMinutes(15)]);
         $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('they asked us to stop')->assertSuccessful();
         $this->assertSame(1, WhatsappReply::count());
+    }
+
+    public function test_an_answer_the_gateway_refuses_is_tried_again_then_left_to_a_person(): void
+    {
+        $this->on();
+        $lead = $this->lead('New Crescent School');
+        $msg = WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $lead->company_id, 'to_number' => '971501234567', 'number_source' => 'mobile_number',
+            'body' => 'Hi, here is your website report.', 'status' => 'sent', 'sent_at' => now()->subDay()]);
+        $in = WhatsappInboundMessage::create(['whatsapp_message_id' => $msg->id, 'lead_id' => $lead->id, 'from_number' => '971501234567', 'body' => 'Thanks, useful report', 'action' => 'reply']);
+        $in->forceFill(['created_at' => now()->subMinutes(15)])->save();
+        $answer = ['action' => 'reply', 'reply' => 'Glad it helps! Pick a time for a 15-minute call: https://calendly.com/ismail/30min', 'reason' => 'ok'];
+
+        // seen live on 19 Nov: the gateway refused two answers at the same minute; they used to be dropped for good
+        $this->gatewayDown = 1;
+        $this->ai = [$answer];
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('Not sent, tried again in 20 minutes: New Crescent School')->assertSuccessful();
+        $this->assertSame(['failed', 1], [AutoReply::value('status'), AutoReply::value('attempts')]);
+        $this->artisan('leadpilot:auto-reply')->assertSuccessful();
+        $this->assertSame(1, AutoReply::value('attempts'), 'not again within 20 minutes');
+
+        $this->travel(25)->minutes();
+        $this->ai = [$answer];
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('1 answered')->assertSuccessful();
+        $this->assertSame(['sent', 2], [AutoReply::value('status'), AutoReply::value('attempts')]);
+        $this->assertSame(1, WhatsappReply::where('status', 'sent')->count());
+
+        // refused three times: a person answers instead
+        $other = $this->lead('Al-Rowad School');
+        $msg2 = WhatsappMessage::create(['lead_id' => $other->id, 'company_id' => $other->company_id, 'to_number' => '971509876543', 'number_source' => 'mobile_number',
+            'body' => 'Hi', 'status' => 'sent', 'sent_at' => now()->subDay()]);
+        $in2 = WhatsappInboundMessage::create(['whatsapp_message_id' => $msg2->id, 'lead_id' => $other->id, 'from_number' => '971509876543', 'body' => 'Interested', 'action' => 'reply']);
+        $in2->forceFill(['created_at' => now()->subMinutes(15)])->save();
+        $this->gatewayDown = 3;
+        foreach (range(1, 3) as $i) {
+            $this->ai = [$answer];
+            $this->artisan('leadpilot:auto-reply')->assertSuccessful();
+            $this->travel(25)->minutes();
+        }
+        $row = AutoReply::where('source_id', $in2->id)->firstOrFail();
+        $this->assertSame(['failed', 3], [$row->status, $row->attempts]);
+        $this->assertSame(1, Task::where('lead_id', $other->id)->where('title', 'Answer now: LeadPilot left this reply to you')->count());
+        $this->artisan('leadpilot:auto-reply')->assertSuccessful();
+        $this->assertSame(3, $row->fresh()->attempts, 'never a fourth try');
     }
 
     public function test_answers_stop_after_the_limit_and_once_a_meeting_is_booked(): void

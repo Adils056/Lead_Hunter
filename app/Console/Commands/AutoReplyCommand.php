@@ -20,13 +20,13 @@ class AutoReplyCommand extends Command
 
             return 0;
         }
-        foreach (['sent' => $this->option('dry-run') ? 'Would answer' : 'Answered', 'held' => 'Left to a person', 'skipped' => 'Skipped'] as $k => $label) {
+        foreach (['sent' => $this->option('dry-run') ? 'Would answer' : 'Answered', 'held' => 'Left to a person', 'skipped' => 'Skipped', 'failed' => 'Not sent, tried again in 20 minutes'] as $k => $label) {
             foreach ($r[$k] as $line) {
                 $this->line("{$label}: {$line}");
             }
         }
         $this->info(count($r['sent']) . ($this->option('dry-run') ? ' would be answered' : ' answered') . ', ' . count($r['held']) . ' left to a person, '
-            . count($r['skipped']) . ' skipped' . ($r['waiting'] ? ", {$r['waiting']} for the next run" : '') . '.');
+            . count($r['skipped']) . ' skipped' . ($r['failed'] ? ', ' . count($r['failed']) . ' not sent (retried later)' : '') . ($r['waiting'] ? ", {$r['waiting']} for the next run" : '') . '.');
 
         return 0;
     }
