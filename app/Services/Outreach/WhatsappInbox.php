@@ -221,8 +221,14 @@ class WhatsappInbox
                 \App\Models\Task::firstOrCreate(['lead_id' => $lead->id, 'title' => 'Replied on WhatsApp: answer now', 'status' => 'pending'],
                     ['company_id' => $lead->company_id, 'assigned_to' => $assignee, 'due_date' => now()->toDateString(), 'priority' => 'high']);
             }
+            // an address or number in it is where they want us to continue (seen live: Sinag Dental's "please send an
+            // e-mail to …" was first read as a wrong number, then marked as a reply, and the address was never written to)
+            $done = app(WhatsappReferral::class)->handle($in, $lead);
+            if ($done) {
+                AuditLog::record('whatsapp_referral', $lead, null, ['inbound_id' => $in->id, 'done' => $done]);
+            }
 
-            return 'Marked as a real reply: the lead is now "replied" and its e-mails have stopped.';
+            return 'Marked as a real reply: the lead is now "replied" and its e-mails have stopped.' . ($done ? ' ' . implode(' ', $done) : '');
         }
         $otherReply = WhatsappInboundMessage::where('lead_id', $lead->id)->where('action', 'reply')->exists()
             || \App\Models\InboundReply::where('lead_id', $lead->id)->get(['category', 'classification'])

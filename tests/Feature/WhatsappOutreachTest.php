@@ -330,6 +330,28 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame(1, WhatsappMessage::where('number_source', 'given_in_reply')->count());
     }
 
+    public function test_an_address_in_a_message_marked_as_a_real_reply_later_is_written_to(): void
+    {
+        [$me, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        $msg = WhatsappMessage::firstOrFail();
+        // seen live (Sinag Dental, 10 Nov): stored as a wrong number, later marked as a reply by a person
+        $in = \App\Models\WhatsappInboundMessage::create(['whatsapp_message_id' => $msg->id, 'lead_id' => $lead->id, 'from_number' => '923001234567', 'action' => 'wrong_number',
+            'body' => 'This clinic number is only reserved for clinic patients. For communications with our management, please send an email to sinagdental@gmail.com... Thank you']);
+        $to = fn () => collect(app('mail.manager')->mailer('array')->getSymfonyTransport()->messages()->all())
+            ->filter(fn ($m) => collect($m->getOriginalMessage()->getTo())->contains(fn ($a) => $a->getAddress() === 'sinagdental@gmail.com'))->values();
+        $this->assertCount(0, $to());
+
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'reply'])->assertRedirect()
+            ->assertSessionHas('success', fn ($t) => str_contains($t, 'sinagdental@gmail.com: e-mailed with the report.'));
+        $this->assertCount(1, $to());
+
+        // marking it again (after an undo) does not e-mail twice
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'auto_reply']);
+        $this->actingAs($this->admin)->post(route('whatsapp.label', $in), ['action' => 'reply']);
+        $this->assertCount(1, $to());
+    }
+
     public function test_a_given_contact_is_left_to_people_when_policy_says_so_and_landlines_are_never_messaged(): void
     {
         $this->market();
