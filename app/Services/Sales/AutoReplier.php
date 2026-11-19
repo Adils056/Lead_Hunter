@@ -240,12 +240,13 @@ class AutoReplier
             . "action \"human\": they complain, are angry or rude, mention a lawyer or legal action, ask us to sign or commit to something, or the message cannot be understood.\n"
             . "Otherwise action \"reply\". The answer:\n"
             . "- answers what they actually wrote, in the language they wrote in, warm and plain, at most {$words} words;\n"
-            . "- uses only the facts given; never invents services, clients, results or anything about them;\n"
+            . "- uses only the facts given; never invents services, clients, results or anything about them; mentions a website fix only if it is in the report findings below, word for word in meaning;\n"
+            . "- never promises to send, e-mail, prepare or do anything later: the only next step is the call;\n"
             . "- never writes a price, cost, number, percentage, date, deadline, discount or guarantee; if they ask about price, say it depends on what they need and that a 15-minute call is enough to give an exact quote the same day;\n"
             . ($link !== '' ? "- ends by inviting them to pick a time for a 15-minute call here: {$link} (write the link exactly once, unchanged);\n"
                 : "- ends by asking when suits them for a 15-minute call;\n")
             . "- contains no other link, no placeholders in brackets, no subject line;\n"
-            . ($late ? "- starts with a short apology for the slow answer;\n" : '')
+            . ($late ? "- right after the greeting, says sorry for the slow answer in one short sentence;\n" : '')
             . "- " . ($channel === 'email' ? "starts with a greeting and ends with the signature \"{$sender}\"." : "is a WhatsApp message: no signature block, at most one short greeting.");
         $user = "Business: {$company}\nWhat our report found on their website: " . ($facts ?: 'not available') . "\n\n"
             . "Our message to them:\n" . Str::limit($this->clean($ours), 900) . "\n\nTheir reply:\n" . Str::limit($theirs, 1500);
@@ -297,6 +298,7 @@ class AutoReplier
             return null;
         };
         $text = str_replace(["\r", '**', '__'], '', $text);
+        $text = preg_replace('/[\x{00A0}\x{2000}-\x{200B}\x{202F}\x{205F}\x{FEFF}]/u', ' ', $text); // odd spaces that glue words together
         // a Markdown link [pick a time](url) becomes plain text with the url
         $text = preg_replace('/\[([^\]]{1,80})\]\((https?:\/\/[^)\s]+)\)/', '$1: $2', $text);
         // our booking link as the AI wrote it (shortened, without or with changed tracking) becomes exactly our link
@@ -316,6 +318,10 @@ class AutoReplier
         // no price, money or promise
         if (preg_match('/[$€£₹]|\b(usd|aed|sar|pkr|qar|omr|kwd|gbp|eur|rs\.?|rupees?|dirhams?|riyals?|dollars?|discount|guarantee[ds]?|refund)\b/iu', $text, $m)) {
             return $no('money or a promise ("' . $m[0] . '")');
+        }
+        // no promise a person would have to keep (only the call is offered)
+        if (preg_match("/\\b(we|i)\\s*(will|'ll|’ll|shall)\\s+(send|e-?mail|share|prepare|forward|get back|follow up|deliver|mail)|\\bwill be sending\\b/iu", $text, $m)) {
+            return $no('a promise to send something ("' . $m[0] . '")');
         }
         // no link but ours
         $allowed = array_filter([$link, BookingLink::base(), config('leadpilot.agency.website')]);
