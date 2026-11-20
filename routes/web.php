@@ -170,6 +170,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/whatsapp/{message}/answer', [\App\Http\Controllers\WhatsappController::class, 'answer'])->name('whatsapp.answer')->whereNumber('message')->middleware('throttle:20,1');
     Route::post('/whatsapp/inbound/{inbound}/label', [\App\Http\Controllers\WhatsappController::class, 'label'])->name('whatsapp.label')->whereNumber('inbound')->middleware('throttle:60,1');
 
+    // automatic answers to prospects' replies: what was answered, left to a person, skipped or not sent
+    Route::get('/auto-replies', [\App\Http\Controllers\AutoReplyController::class, 'index'])->name('auto-replies.index');
+
     Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
     Route::get('/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'read'])->name('notifications.read');
     Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll'])->name('notifications.read-all');

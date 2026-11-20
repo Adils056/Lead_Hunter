@@ -423,6 +423,10 @@
                 <i class="bi bi-whatsapp"></i>
                 <span>WhatsApp</span>
             </a>
+            <a href="{{ route('auto-replies.index') }}" class="nav-link-custom {{ request()->routeIs('auto-replies.*') ? 'active' : '' }}">
+                <i class="bi bi-robot"></i>
+                <span>Auto-replies</span>
+            </a>
             <a href="{{ route('campaigns.index') }}" class="nav-link-custom {{ request()->routeIs('campaigns.*') ? 'active' : '' }}">
                 <i class="bi bi-send-check-fill"></i>
                 <span>Campaign Automation</span>

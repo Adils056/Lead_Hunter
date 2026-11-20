@@ -307,6 +307,29 @@ class AutoReplyTest extends TestCase
         $this->assertStringContainsString('Glad to hear from you!', $task->description, 'the ready answer is in the task, to copy');
     }
 
+    public function test_the_auto_replies_screen_shows_what_was_answered_and_what_waits_for_a_person(): void
+    {
+        $this->on();
+        $answered = $this->lead('Kre8tive Nails');
+        $this->emailReply($answered, 'Yes interested, tell me more', 'interested');
+        $angry = $this->lead('Angry Dental');
+        $this->emailReply($angry, 'Stop spamming me, I will call my lawyer', 'objection');
+        $this->ai = [['action' => 'reply', 'reply' => 'Thanks Nadia! Pick a time: https://calendly.com/ismail/30min', 'reason' => 'ok'], ['action' => 'human', 'reply' => '', 'reason' => 'threatens legal action']];
+        $this->artisan('leadpilot:auto-reply')->assertSuccessful();
+
+        $page = $this->actingAs($this->admin)->get(route('auto-replies.index'))->assertOk();
+        $page->assertSee('Automatic answers are on')->assertSee('Kre8tive Nails')->assertSee('Yes interested, tell me more')
+            ->assertSee('Thanks Nadia!')->assertSee('Angry Dental')->assertSee('threatens legal action')->assertSee('Left to a person');
+        $this->actingAs($this->admin)->get(route('auto-replies.index', ['tab' => 'sent']))->assertOk()->assertSee('Kre8tive Nails')->assertDontSee('Angry Dental');
+        $this->actingAs($this->admin)->get(route('auto-replies.index', ['tab' => ['x']]))->assertOk();
+        $this->actingAs($this->admin)->get(route('dashboard'))->assertSee(route('auto-replies.index'));
+
+        // a salesperson sees only the replies of leads they may open
+        $sales = User::factory()->create(['role' => 'sales', 'is_active' => true]);
+        $angry->update(['assigned_user_id' => $this->admin->id]);
+        $this->actingAs($sales)->get(route('auto-replies.index'))->assertOk()->assertSee('Kre8tive Nails')->assertDontSee('Angry Dental');
+    }
+
     public function test_answers_stop_after_the_limit_and_once_a_meeting_is_booked(): void
     {
         $this->on();
