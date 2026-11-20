@@ -88,7 +88,8 @@
 </table>
 @endif
 
-<div class="box" style="margin-top: 16px"><strong>Next step.</strong> {{ $settings->ctaLine(true) }}<br>{{ config('leadpilot.agency.sender_name') }}, {{ $agency['name'] }}@if($settings->contact_phone) · {{ $settings->contact_phone }}@endif</div>
+<div class="box" style="margin-top: 16px"><strong>Next step.</strong> {{ $settings->ctaLine(true) }}<br>{{ config('leadpilot.agency.sender_name') }}, {{ $agency['name'] }}@if($settings->contact_phone) · {{ $settings->contact_phone }}@endif
+@if($chat = \App\Support\WhatsappChatLink::forCompany($company))<br><strong>Prefer WhatsApp?</strong> <a href="{{ $chat }}">Message us on WhatsApp</a> (+{{ \App\Support\WhatsappChatLink::number() }})@endif</div>
 <p class="muted" style="font-size: 8.5px">How this was measured: automated checks of each public homepage (security, speed, mobile, Google visibility, enquiry paths) on the date above. Scores count only checks that could be run; a competitor whose site could not be checked is left out.</p>
 </body>
 </html>

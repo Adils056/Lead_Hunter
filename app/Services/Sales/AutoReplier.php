@@ -194,7 +194,8 @@ class AutoReplier
         if ($theirs === '') {
             return $this->hold('whatsapp', $in->id, $lead, ['action' => 'human', 'reason' => 'a photo, voice note or file (no text to read)', 'writer' => 'rules'], $dry, $who);
         }
-        $c = $this->compose('whatsapp', $lead, $theirs, (string) $msg->body, $in->created_at);
+        $ours = $msg->status === 'inbound' ? '(They wrote to us first, from the WhatsApp link in our e-mail or website report.)' : (string) $msg->body;
+        $c = $this->compose('whatsapp', $lead, $theirs, $ours, $in->created_at);
         if ($c['action'] !== 'reply') {
             return $this->hold('whatsapp', $in->id, $lead, $c, $dry, $who);
         }
