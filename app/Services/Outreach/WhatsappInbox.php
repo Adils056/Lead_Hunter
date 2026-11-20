@@ -128,7 +128,11 @@ class WhatsappInbox
 
             return null;
         };
-        $rawFrom = $pick(['from', 'sender', 'remotejid', 'remote_jid', 'chatid', 'chat_id', 'wa_id', 'waid', 'author', 'participant', 'msisdn', 'phone', 'number', 'mobile']);
+        // a chat using a WhatsApp privacy id has remoteJid "…@lid" and the phone number in remoteJidAlt / senderPn
+        $rawFrom = $pick(['from', 'sender', 'remotejidalt', 'remote_jid_alt', 'senderpn', 'sender_pn', 'participantpn', 'remotejid', 'remote_jid', 'chatid', 'chat_id', 'wa_id', 'waid', 'author', 'participant', 'msisdn', 'phone', 'number', 'mobile']);
+        if ($rawFrom && str_ends_with(strtolower($rawFrom), '@lid')) {
+            $rawFrom = null; // a privacy id is not a phone number: matching it to one would be a guess
+        }
         $from = $rawFrom ? preg_replace('/\D/', '', explode(':', explode('@', $rawFrom)[0])[0]) : null;
         $fromMe = collect($flat)->first(fn ($v, $k) => in_array(strtolower((string) last(explode('.', (string) $k))), ['fromme', 'from_me'], true));
         // EZIMK also posts a copy of every message we send ("type": "MESSAGE_SENT"): that is us, not a prospect
@@ -170,8 +174,14 @@ class WhatsappInbox
             self::isAutoReply($m['body']) => 'auto_reply',
             default => 'reply',
         };
-        $in = WhatsappInboundMessage::create(['provider_message_id' => $m['id'], 'from_number' => $m['from'], 'body' => $m['body'] !== null ? mb_substr($m['body'], 0, 5000) : null,
-            'lead_id' => $sent?->lead_id, 'whatsapp_message_id' => $sent?->id, 'action' => $action, 'payload' => $raw]);
+        $attributes = ['provider_message_id' => $m['id'], 'from_number' => $m['from'], 'body' => $m['body'] !== null ? mb_substr($m['body'], 0, 5000) : null,
+            'lead_id' => $sent?->lead_id, 'whatsapp_message_id' => $sent?->id, 'action' => $action, 'payload' => $raw];
+        // The gateway posts every message the number gets or sends, personal chats included (seen live: birthday wishes
+        // in "Other numbers"). Only conversations LeadPilot started are kept, unless WHATSAPP_KEEP_OTHER_MESSAGES=true.
+        if (in_array($action, ['unmatched', 'ignored'], true) && !config('leadpilot.whatsapp.keep_other_messages')) {
+            return new WhatsappInboundMessage(['from_number' => $m['from'], 'action' => $action]);
+        }
+        $in = WhatsappInboundMessage::create($attributes);
 
         $lead = $sent?->lead;
         if ($action === 'opt_out') {
