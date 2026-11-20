@@ -321,6 +321,9 @@ return [
             'daily_cap' => (int) env('WHATSAPP_DAILY_CAP', 10),   // keep low: a number that messages many strangers gets banned
             'per_run' => (int) env('WHATSAPP_PER_RUN', 3),
         ],
+        // keep messages from numbers LeadPilot never wrote to, and copies of messages sent from the phone (off: the
+        // gateway forwards personal chats too, which have no place in the CRM)
+        'keep_other_messages' => (bool) env('WHATSAPP_KEEP_OTHER_MESSAGES', false),
         // secret part of the webhook URL EZIMK posts incoming messages to (php artisan leadpilot:whatsapp-webhook-url)
         'webhook_token' => env('WHATSAPP_WEBHOOK_TOKEN'),
     ],

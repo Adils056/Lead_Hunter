@@ -430,12 +430,14 @@ class WhatsappOutreachTest extends TestCase
         $msg = WhatsappMessage::firstOrFail();
         $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
         $this->post($url, ['from' => '923001234567', 'message' => 'Thank you for contacting Smile Dental! Please let us know how we can help you.']);
-        $this->post($url, ['from' => '923119998887', 'message' => 'test from the team']);
+        $this->post($url, ['from' => '923119998887', 'message' => 'Happy birthday Sabika']);
 
         $this->actingAs($this->admin)->get(route('whatsapp.index'))->assertOk()->assertSee('Smile Dental')->assertSee('Automatic')->assertSee('Real replies');
         $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'replies']))->assertOk()->assertDontSee('Smile Dental');
         $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'automatic']))->assertOk()->assertSee('Smile Dental');
-        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'other']))->assertOk()->assertSee('test from the team');
+        // a personal chat on the team's number is not stored (seen live: birthday wishes under "Other numbers")
+        $this->assertSame(0, \App\Models\WhatsappInboundMessage::where('body', 'like', '%birthday%')->count());
+        $this->actingAs($this->admin)->get(route('whatsapp.index', ['tab' => 'other']))->assertOk()->assertDontSee('Happy birthday')->assertSee('no longer stored');
         $this->actingAs($this->admin)->get(route('whatsapp.show', $msg))->assertOk()
             ->assertSee('no viewport')->assertSee('Website &amp; competitor report (PDF)', false)->assertSee('Mark as real reply')->assertSee('wa.me/923001234567');
         $this->actingAs($this->admin)->get(route('leads.show', $lead))->assertOk()->assertSee(route('whatsapp.show', $msg));
@@ -602,6 +604,28 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame('failed', $done->status);
         $this->assertSame('rejected', WhatsappMessage::first()->status);
         Http::assertNothingSent();
+    }
+
+    public function test_a_privacy_id_chat_is_read_by_its_phone_number_and_personal_chats_can_be_forgotten(): void
+    {
+        $inbox = app(\App\Services\Outreach\WhatsappInbox::class);
+        // seen live (New Crescent, 19 Nov): the chat uses a WhatsApp privacy id, the number is in remoteJidAlt
+        $lid = ['payload' => ['type' => 'MESSAGES_UPSERT', 'data' => [['key' => ['remoteJid' => '254674632474758@lid', 'remoteJidAlt' => '966534232751@s.whatsapp.net',
+            'fromMe' => false, 'id' => 'ACE8', 'addressingMode' => 'lid'], 'message' => ['conversation' => 'Thank you for your kind interest']]]]];
+        $this->assertSame('966534232751', $inbox->parse($lid)['from']);
+        // a privacy id alone is never taken for a phone number
+        unset($lid['payload']['data'][0]['key']['remoteJidAlt']);
+        $this->assertNull($inbox->parse($lid)['from']);
+
+        // rows stored before personal chats were left out are removed; conversations LeadPilot started are kept
+        [, $lead] = $this->market();
+        app(WhatsappOutreach::class)->run();
+        \App\Models\WhatsappInboundMessage::create(['from_number' => '923215205714', 'body' => 'Happy birthday', 'action' => 'unmatched']);
+        \App\Models\WhatsappInboundMessage::create(['from_number' => '923311111174', 'body' => 'see you tonight', 'action' => 'ignored']);
+        $this->post(\App\Services\Outreach\WhatsappInbox::webhookUrl(), ['from' => '923001234567', 'message' => 'Yes, interested']);
+        $this->artisan('leadpilot:whatsapp-forget-others', ['--dry-run' => true])->expectsOutputToContain('2 message(s) from other numbers would be removed')->assertSuccessful();
+        $this->artisan('leadpilot:whatsapp-forget-others')->expectsOutputToContain('Removed 2')->assertSuccessful();
+        $this->assertSame(['reply'], \App\Models\WhatsappInboundMessage::pluck('action')->all());
     }
 
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void

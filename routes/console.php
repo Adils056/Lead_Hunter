@@ -403,6 +403,20 @@ Artisan::command('leadpilot:whatsapp-reclassify {--dry-run : Show what would cha
     $this->info(($dry ? 'Would re-mark ' : 'Re-marked ') . count($rows) . ' message(s) that were not real replies.' . ($dry ? ' Run without --dry-run to apply.' : ' Run leadpilot:win-ladder to refresh the rungs.'));
 })->purpose('Re-check stored WhatsApp replies and undo the ones that were automatic messages or wrong numbers');
 
+Artisan::command('leadpilot:whatsapp-forget-others {--dry-run : Count what would be removed}', function () {
+    // Personal chats the gateway forwarded before LeadPilot stopped storing them: messages from numbers it never wrote
+    // to, and copies of messages sent from the phone. Replies in conversations LeadPilot started are never touched.
+    $q = \App\Models\WhatsappInboundMessage::whereIn('action', ['unmatched', 'ignored'])->whereNull('whatsapp_message_id');
+    $n = (clone $q)->count();
+    if ($this->option('dry-run')) {
+        $this->info("{$n} message(s) from other numbers would be removed.");
+
+        return 0;
+    }
+    $q->delete();
+    $this->info("Removed {$n} message(s) from other numbers.");
+})->purpose('Remove stored WhatsApp messages that do not belong to a LeadPilot conversation (personal chats)');
+
 Artisan::command('leadpilot:whatsapp-referrals {--dry-run : List what would be contacted without sending}', function (\App\Services\Outreach\WhatsappReferral $referral) {
     // Replies stored before LeadPilot acted on them that carry an e-mail address or number: contact them now (each once)
     $rows = [];

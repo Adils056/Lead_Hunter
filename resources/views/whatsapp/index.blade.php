@@ -50,6 +50,9 @@
 <div class="card-lp p-0 border-top-0">
 <div class="table-responsive">
 @if($tab === 'other')
+    @unless(config('leadpilot.whatsapp.keep_other_messages'))
+        <p class="small text-muted px-3 pt-3 mb-2"><i class="bi bi-shield-lock me-1"></i>Messages from numbers LeadPilot never wrote to (personal chats on the team's number) are no longer stored. Older ones can be removed with <code>php artisan leadpilot:whatsapp-forget-others</code>.</p>
+    @endunless
     <table class="table table-lp small align-middle mb-0">
         <thead><tr class="text-muted"><th class="ps-3">Received</th><th>From</th><th style="min-width: 320px;">Message</th></tr></thead>
         <tbody>
