@@ -32,7 +32,7 @@
             @if($company?->city) · {{ $company->city }}, {{ $company->country }}@endif
             @if($company?->website) · <a href="{{ $company->website }}" target="_blank" rel="noopener noreferrer">{{ $company->website }}</a>@endif
         </p>
-        <p class="text-muted small mb-0">Number from: {{ ['website_whatsapp_link' => 'a WhatsApp link on their website', 'mobile_number' => 'the mobile number they list', 'given_in_reply' => 'their own reply'][$message->number_source] ?? ($message->number_source ?: 'unknown') }}</p>
+        <p class="text-muted small mb-0">Number from: {{ ['website_whatsapp_link' => 'a WhatsApp link on their website', 'mobile_number' => 'the mobile number they list', 'given_in_reply' => 'their own reply', 'they_wrote_first' => 'they wrote to us first, from the WhatsApp link in our e-mail or report'][$message->number_source] ?? ($message->number_source ?: 'unknown') }}</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
         @if($lead)
@@ -56,6 +56,8 @@
                 </div>
             </div>
         </div>
+    @elseif($e['out'] && $m->status === 'inbound')
+        <p class="text-center text-muted small mb-0"><i class="bi bi-box-arrow-in-down-right me-1"></i>They started this chat from our WhatsApp link · {{ ($m->sent_at ?? $m->created_at)->timezone($tz)->format('M d, H:i') }}</p>
     @elseif($e['out'])
         <div class="wa-row out">
             <div class="wa-bubble"><div class="wa-text">{{ $m->body }}</div>

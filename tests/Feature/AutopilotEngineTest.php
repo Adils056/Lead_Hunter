@@ -118,6 +118,20 @@ class AutopilotEngineTest extends TestCase
         $this->assertSame(1, $engine->planFollowUps()['created'], 'the live sequence still gets its follow-up');
     }
 
+    public function test_every_email_invites_the_prospect_to_write_on_whatsapp_first(): void
+    {
+        config(['leadpilot.whatsapp.chat_number' => '923300000001', 'leadpilot.agency.sender_name' => 'Ismail']);
+        $lead = $this->qualifiedLead();
+        $engine = app(SequenceEngine::class);
+        $engine->planFirstTouches(5);
+        app(ApprovalService::class)->decide(ApprovalRequest::where('type', 'outreach_message')->firstOrFail(), $this->admin, 'approve');
+
+        $body = $this->prospectMails()[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringContainsString('Prefer WhatsApp? Message us here: https://wa.me/923300000001?text=', $body);
+        $this->assertStringContainsString('LP' . $lead->id, rawurldecode($body));
+        $this->assertStringNotContainsString('wa.me', (string) CampaignRecipient::where('lead_id', $lead->id)->value('personalized_body'), 'added when sending, the draft is unchanged');
+    }
+
     public function test_first_touch_requires_approval_by_default_then_follow_ups_thread_and_stop_on_reply(): void
     {
         $lead = $this->qualifiedLead();

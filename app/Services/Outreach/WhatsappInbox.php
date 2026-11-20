@@ -164,7 +164,9 @@ class WhatsappInbox
         $sent = null;
         if ($m['from'] && !$m['from_me']) {
             $tail = substr($m['from'], -10);
-            $sent = WhatsappMessage::where('status', 'sent')->where('to_number', 'like', "%{$tail}")->latest('id')->first();
+            $sent = WhatsappMessage::whereIn('status', ['sent', 'inbound'])->where('to_number', 'like', "%{$tail}")->latest('id')->first();
+            // they wrote first, from the "Chat with us on WhatsApp" link in our e-mail or report: start the conversation
+            $sent ??= $this->conversationFromLink($m['from'], $m['body']);
         }
         $action = match (true) {
             $m['from_me'] || !$m['from'] => 'ignored',
@@ -204,6 +206,25 @@ class WhatsappInbox
         }
 
         return $in;
+    }
+
+    /** A conversation the prospect started from our WhatsApp link, joined to its lead by the reference in the message. */
+    protected function conversationFromLink(string $from, ?string $body): ?WhatsappMessage
+    {
+        $ref = \App\Support\WhatsappChatLink::ref($body);
+        if (!$ref) {
+            return null;
+        }
+        $lead = $ref[0] === 'lead'
+            ? Lead::find($ref[1])
+            : (\App\Models\CampaignRecipient::whereNotNull('sent_at')->whereHas('lead', fn ($q) => $q->where('company_id', $ref[1]))->latest('sent_at')->first()?->lead
+                ?? Lead::where('company_id', $ref[1])->orderByDesc('overall_score')->first());
+        if (!$lead) {
+            return null;
+        }
+
+        return WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $lead->company_id, 'to_number' => $from,
+            'number_source' => 'they_wrote_first', 'body' => '', 'status' => 'inbound', 'sent_at' => now()]);
     }
 
     /**
