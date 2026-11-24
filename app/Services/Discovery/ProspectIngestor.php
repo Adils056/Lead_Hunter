@@ -39,6 +39,41 @@ class ProspectIngestor
      *                    tech_stack, external_id, google_rating, google_review_count, business_status, source_url
      * @return array{company: ?Company, created: bool, excluded: ?string}
      */
+    /**
+     * Column sizes of the companies table. Seen live (Nov 2026): one Overture place with a value longer than its column
+     * ("String data, right truncated") stopped the whole search, so values are fitted before they are saved.
+     */
+    public const COLUMN_LIMITS = [
+        'name' => 255, 'domain' => 255, 'public_email' => 255, 'industry' => 100, 'country' => 100, 'city' => 100,
+        'size_range' => 50, 'public_phone' => 50, 'external_id' => 191, 'business_status' => 40,
+    ];
+
+    /** URL columns: a cut URL is a broken link, so an over-long one loses its query string, then is dropped. */
+    public const URL_LIMITS = ['website' => 255, 'source_url' => 500];
+
+    public static function fit(array $fields): array
+    {
+        foreach (self::COLUMN_LIMITS as $k => $max) {
+            if (isset($fields[$k]) && is_string($fields[$k]) && mb_strlen($fields[$k]) > $max) {
+                $fields[$k] = $k === 'public_phone'
+                    ? mb_substr(trim(preg_split('/[,;\/|]/', $fields[$k])[0]), 0, $max) // several numbers: keep the first
+                    : rtrim(mb_substr($fields[$k], 0, $max));
+            }
+        }
+        foreach (self::URL_LIMITS as $k => $max) {
+            if (isset($fields[$k]) && is_string($fields[$k]) && strlen($fields[$k]) > $max) {
+                $short = preg_replace('/[?#].*$/', '', $fields[$k]);
+                if (strlen($short) <= $max) {
+                    $fields[$k] = $short;
+                } else {
+                    unset($fields[$k]);
+                }
+            }
+        }
+
+        return $fields;
+    }
+
     public function upsertCompany(array $data, DiscoveryResult $result): array
     {
         $name = trim((string) ($data['name'] ?? ''));
@@ -105,6 +140,7 @@ class ProspectIngestor
             'business_status' => $data['business_status'] ?? null,
             'source_url' => $data['source_url'] ?? null,
         ], fn ($v) => $v !== null && $v !== '' && $v !== []);
+        $fields = self::fit($fields);
 
         $created = false;
         if (!$company) {
@@ -180,10 +216,11 @@ class ProspectIngestor
             'first_name' => $person['first_name'] ?? null,
             'last_name' => $person['last_name'] ?? null,
             // Honest label when no person is known — visible in UI, never sent as a greeting.
-            'full_name' => $hasPerson ? null : ($company->name . ' — ' . ($email ? 'general inbox' : 'contact unknown')),
-            'job_title' => $person['job_title'] ?? null,
+            // a 250-character company name plus " — contact unknown" no longer overflows the 255-character column
+            'full_name' => $hasPerson ? null : mb_substr($company->name, 0, 230) . ' — ' . ($email ? 'general inbox' : 'contact unknown'),
+            'job_title' => isset($person['job_title']) ? mb_substr((string) $person['job_title'], 0, 255) : null,
             'email' => $email,
-            'phone' => $person['phone'] ?? $company->public_phone,
+            'phone' => self::fit(['public_phone' => $person['phone'] ?? $company->public_phone])['public_phone'] ?? null,
             'profile_url' => $person['profile_url'] ?? null,
             'contact_status' => $status,
             'country' => $company->country,

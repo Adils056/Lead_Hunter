@@ -11,6 +11,20 @@ class ProviderHealthService
     public const BREAK_AFTER = 5;          // consecutive failures -> open circuit
     public const COOLDOWN_MINUTES = 60;
 
+    public const MAX_COOLDOWN_MINUTES = 1440;
+
+    /**
+     * How long a failing provider rests: 1 hour after 5 failures in a row, doubling with every 5 more, at most a day.
+     * Before, a source that was down for days (OpenStreetMap: 78 failures in a row) was retried every hour, and each
+     * try cost a search cycle up to 2.5 minutes of timeouts.
+     */
+    public static function cooldownMinutes(int $failuresInARow): int
+    {
+        $steps = intdiv(max(0, $failuresInARow - self::BREAK_AFTER), self::BREAK_AFTER);
+
+        return (int) min(self::MAX_COOLDOWN_MINUTES, self::COOLDOWN_MINUTES * (2 ** min($steps, 10)));
+    }
+
     public function row(string $provider): ProviderHealth
     {
         return ProviderHealth::firstOrCreate(['provider' => $provider], ['status' => 'unknown', 'consecutive_failures' => 0, 'auth_failures' => 0, 'total_calls' => 0, 'total_failures' => 0]);
@@ -72,7 +86,7 @@ class ProviderHealthService
         ]);
         if ($h->consecutive_failures >= self::BREAK_AFTER) {
             $h->status = 'disabled';
-            $h->disabled_until = now()->addMinutes(self::COOLDOWN_MINUTES);
+            $h->disabled_until = now()->addMinutes(self::cooldownMinutes($h->consecutive_failures));
         }
         $h->save();
 
