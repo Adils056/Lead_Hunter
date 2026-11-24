@@ -104,4 +104,22 @@ class SourceAndPriorityFixesTest extends TestCase
         $order = app(SequenceEngine::class)->dueQueue(20)->map(fn ($r) => $r->lead->company->name)->all();
         $this->assertSame(['Hiring Co', 'Small Gap', 'Nothing Known'], $order);
     }
+
+    public function test_no_cold_email_to_a_colleague_while_the_company_is_in_a_conversation(): void
+    {
+        $c = Company::create(['name' => 'Sidekick Labs', 'domain' => 'sidekick.example', 'country' => 'United States']);
+        $replied = Lead::create(['company_id' => $c->id, 'first_name' => 'Ana', 'last_name' => 'Ruiz', 'full_name' => 'Ana Ruiz', 'email' => 'ana@sidekick.example',
+            'contact_status' => 'identified', 'email_verification_status' => 'verified', 'lifecycle_stage' => 'replied']);
+        $colleague = Lead::create(['company_id' => $c->id, 'first_name' => 'Ben', 'full_name' => 'Ben Ode', 'email' => 'ben@sidekick.example',
+            'contact_status' => 'identified', 'email_verification_status' => 'verified', 'lifecycle_stage' => 'new']);
+        $gate = app(\App\Services\EligibilityGateService::class);
+
+        $r = $gate->evaluate($colleague->fresh());
+        $this->assertArrayHasKey('company_conversation', $r->failedChecks);
+        $this->assertStringContainsString('Ana Ruiz', $r->failedChecks['company_conversation']);
+
+        // once that conversation is not active any more (e.g. moved back to nurture), colleagues are not blocked by it
+        $replied->update(['lifecycle_stage' => 'nurture']);
+        $this->assertArrayNotHasKey('company_conversation', $gate->evaluate($colleague->fresh())->failedChecks);
+    }
 }

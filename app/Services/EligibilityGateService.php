@@ -73,6 +73,13 @@ class EligibilityGateService
         // 1b. Conversation stage: someone who replied, is talking to sales, or is closed gets answers, not cold e-mail
         if (in_array($lead->lifecycle_stage, Lead::NO_COLD_EMAIL_STAGES, true)) {
             $result->fail('lifecycle_stage', 'Lead is at stage "' . str_replace('_', ' ', $lead->lifecycle_stage) . '": cold e-mail stops here; answer through the Sales Assistant.', (string) $lead->lifecycle_stage);
+        } elseif ($lead->company_id && ($other = Lead::where('company_id', $lead->company_id)->whereKeyNot($lead->id)
+            ->whereIn('lifecycle_stage', Lead::NO_COLD_EMAIL_STAGES)->first(['id', 'full_name', 'first_name', 'last_name', 'lifecycle_stage']))) {
+            // Seen live (24 Nov): a second contact at Sidekick Labs was next in line for a cold first e-mail while the
+            // company's own reply was still waiting for our answer. One conversation per company.
+            $who = trim(($other->first_name ?? '') . ' ' . ($other->last_name ?? '')) ?: (string) $other->full_name;
+            $result->fail('company_conversation', "Someone else at this company ({$who}) is at stage \"" . str_replace('_', ' ', $other->lifecycle_stage)
+                . '": answer that conversation; no cold e-mail to their colleagues.', (string) $other->lifecycle_stage);
         } else {
             $result->pass('lifecycle_stage', 'Not in a conversation or closed.');
         }
