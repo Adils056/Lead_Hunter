@@ -324,6 +324,9 @@ return [
         // keep messages from numbers LeadPilot never wrote to, and copies of messages sent from the phone (off: the
         // gateway forwards personal chats too, which have no place in the CRM)
         'keep_other_messages' => (bool) env('WHATSAPP_KEEP_OTHER_MESSAGES', false),
+        // the team's WhatsApp number prospects are invited to write to ("Chat with us on WhatsApp" in every e-mail and
+        // report); empty = no link. They write first, so nothing goes to anyone who did not ask.
+        'chat_number' => env('WHATSAPP_CHAT_NUMBER'),
         // secret part of the webhook URL EZIMK posts incoming messages to (php artisan leadpilot:whatsapp-webhook-url)
         'webhook_token' => env('WHATSAPP_WEBHOOK_TOKEN'),
     ],

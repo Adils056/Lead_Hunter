@@ -198,11 +198,15 @@ class CampaignDeliveryService
                         array_unshift($chain, '<' . $p->rfc_message_id . '>');
                     }
                 }
+                $body = (string) $locked->personalized_body;
+                if (($chat = \App\Support\WhatsappChatLink::forLead($lead)) && !str_contains($body, 'wa.me/')) {
+                    $body = rtrim($body) . "\n\nPrefer WhatsApp? Message us here: {$chat}"; // they write first: no cold WhatsApp
+                }
                 $providerMessageId = app(\App\Services\Outreach\OutreachMailer::class)->send(
                     $lead->email,
                     $lead->contact_status === 'identified' ? (string) $lead->full_name : '',
                     (string) $locked->personalized_subject,
-                    (string) $locked->personalized_body,
+                    $body,
                     $parent?->rfc_message_id,
                     implode(' ', $chain)
                 );

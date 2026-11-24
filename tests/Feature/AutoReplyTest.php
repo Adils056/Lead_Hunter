@@ -330,6 +330,22 @@ class AutoReplyTest extends TestCase
         $this->actingAs($sales)->get(route('auto-replies.index'))->assertOk()->assertSee('Kre8tive Nails')->assertDontSee('Angry Dental');
     }
 
+    public function test_a_chat_the_prospect_started_from_our_link_is_answered_too(): void
+    {
+        $this->on();
+        $lead = $this->lead('Tacobay');
+        $conv = WhatsappMessage::create(['lead_id' => $lead->id, 'company_id' => $lead->company_id, 'to_number' => '971501112233', 'number_source' => 'they_wrote_first',
+            'body' => '', 'status' => 'inbound', 'sent_at' => now()->subMinutes(20)]);
+        $in = WhatsappInboundMessage::create(['whatsapp_message_id' => $conv->id, 'lead_id' => $lead->id, 'from_number' => '971501112233', 'action' => 'reply',
+            'body' => 'Hi Ismail, I got your e-mail about the Tacobay website. (ref LP' . $lead->id . ')']);
+        $in->forceFill(['created_at' => now()->subMinutes(15)])->save();
+        $this->ai = [['action' => 'reply', 'reply' => 'Thanks for writing! Happy to walk you through it. Pick a time: https://calendly.com/ismail/30min', 'reason' => 'ok']];
+
+        $this->artisan('leadpilot:auto-reply')->expectsOutputToContain('1 answered')->assertSuccessful();
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'generativelanguage') && str_contains($r->body(), 'They wrote to us first'));
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'ezimk.com') && collect($r->data())->pluck('contents', 'name')->get('to') === '971501112233');
+    }
+
     public function test_answers_stop_after_the_limit_and_once_a_meeting_is_booked(): void
     {
         $this->on();

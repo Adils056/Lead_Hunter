@@ -89,6 +89,7 @@
                     @if($m->status === 'sent')<span class="badge bg-light text-dark border"><i class="bi bi-check2-all text-success"></i> Sent</span>
                     @elseif($m->status === 'failed')<span class="badge bg-secondary" title="{{ $m->provider_response }}">Not delivered</span>
                     @elseif($m->status === 'pending_approval')<span class="badge bg-info text-dark">Waiting for approval</span>
+                    @elseif($m->status === 'inbound')<span class="badge bg-success-subtle text-success border"><i class="bi bi-box-arrow-in-down-right"></i> They wrote first</span>
                     @else<span class="badge bg-light text-dark border">{{ str_replace('_', ' ', $m->status) }}</span>@endif
                 </td>
                 <td>

@@ -628,6 +628,49 @@ class WhatsappOutreachTest extends TestCase
         $this->assertSame(['reply'], \App\Models\WhatsappInboundMessage::pluck('action')->all());
     }
 
+    public function test_a_prospect_who_writes_first_from_our_whatsapp_link_starts_a_conversation_on_their_lead(): void
+    {
+        config(['leadpilot.whatsapp.chat_number' => '+92 330 0000001', 'leadpilot.agency.sender_name' => 'Ismail', 'leadpilot.whatsapp.outreach.enabled' => false]);
+        [$me, $lead] = $this->market();
+        app(\App\Services\Audit\WebsiteReportService::class)->generate($me, null, 0, false);
+        $P = \App\Support\WhatsappChatLink::class;
+
+        // the link: our number, a message already written, and the lead's reference
+        $link = $P::forLead($lead);
+        $this->assertStringStartsWith('https://wa.me/923300000001?text=', $link);
+        $this->assertStringContainsString('ref%20LP' . $lead->id, $link);
+        $this->assertSame(['lead', $lead->id], $P::ref(rawurldecode(explode('text=', $link)[1])));
+        $this->assertSame(['company', $me->id], $P::ref('Hi, I saw the website report for Smile Dental. (ref LC' . $me->id . ')'));
+        config(['leadpilot.whatsapp.chat_number' => null]);
+        $this->assertNull($P::forLead($lead), 'no number set: no link');
+        config(['leadpilot.whatsapp.chat_number' => '+92 330 0000001']);
+
+        // the website report carries it
+        $report = $me->fresh()->latestWebsiteReport;
+        $this->get($report->shareUrl())->assertOk()->assertSee('Message us on WhatsApp')->assertSee('wa.me/923300000001', false);
+
+        // they write first: the conversation joins the lead, which is now "replied", and the team is alerted
+        $url = \App\Services\Outreach\WhatsappInbox::webhookUrl();
+        $this->post($url, ['from' => '971501112233', 'message' => 'Hi Ismail, I got your e-mail about the Smile Dental website. (ref LP' . $lead->id . ')'])
+            ->assertJson(['action' => 'reply']);
+        $conv = WhatsappMessage::where('number_source', 'they_wrote_first')->firstOrFail();
+        $this->assertSame(['inbound', '971501112233', $lead->id], [$conv->status, $conv->to_number, $conv->lead_id]);
+        $this->assertSame('replied', $lead->fresh()->lifecycle_stage);
+        $this->assertSame(1, \App\Models\Task::where('lead_id', $lead->id)->where('title', 'like', '%answer now%')->count());
+        $this->assertSame(0, app(WhatsappOutreach::class)->sentToday(), 'not counted as a message we sent');
+
+        // the next message from them joins the same conversation, and the screen shows who started it
+        $this->post($url, ['from' => '971501112233', 'message' => 'How much for a new site?'])->assertJson(['action' => 'reply']);
+        $this->assertSame(1, WhatsappMessage::count());
+        $this->assertSame(2, $conv->inbound()->count());
+        $this->actingAs($this->admin)->get(route('whatsapp.show', $conv))->assertOk()->assertSee('They started this chat from our WhatsApp link')->assertSee('How much for a new site?');
+        $this->actingAs($this->admin)->get(route('whatsapp.index'))->assertOk()->assertSee('They wrote first');
+
+        // a message from a stranger without a reference is still not stored
+        $this->post($url, ['from' => '971509999999', 'message' => 'hello?'])->assertJson(['action' => 'unmatched']);
+        $this->assertSame(1, WhatsappMessage::count());
+    }
+
     public function test_the_webhook_url_command_prints_the_url_to_paste_into_ezimk(): void
     {
         $this->artisan('leadpilot:whatsapp-webhook-url')->expectsOutputToContain('/webhooks/whatsapp/' . \App\Services\Outreach\WhatsappInbox::token())->assertExitCode(0);
