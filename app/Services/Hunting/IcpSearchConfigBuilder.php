@@ -21,6 +21,21 @@ class IcpSearchConfigBuilder
         // Fallback: if a requested paid source can't run (no key / no budget), also use the best free
         // provider of the same capability. The paid source stays in the list so it can ask for approval.
         $registry = app(\App\Services\Integrations\ProviderRegistry::class);
+        // A free source that is switched off for failing again and again is replaced by a working free source of the
+        // same kind. Seen live (Nov 2026): every OpenStreetMap server timed out from the host 78 times in a row, so the
+        // profiles that named it found nothing, while Overture (same search options) worked.
+        foreach ($sources as $i => $src) {
+            $def = $registry->definition($src);
+            if ($def && !$def['paid'] && !in_array($src, $registry->select($def['capability']), true)) {
+                foreach ($registry->select($def['capability']) as $alt) {
+                    if (!($registry->definition($alt)['paid'] ?? true) && !in_array($alt, $sources, true)) {
+                        $sources[$i] = $alt;
+                        break;
+                    }
+                }
+            }
+        }
+        $sources = array_values(array_unique($sources));
         foreach ($sources as $src) {
             $def = $registry->definition($src);
             if ($def && $def['paid'] && !in_array($src, $registry->select($def['capability']), true)) {

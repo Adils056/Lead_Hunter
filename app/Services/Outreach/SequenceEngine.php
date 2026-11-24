@@ -92,7 +92,8 @@ class SequenceEngine
             ->whereIn('contact_status', OutreachSetting::current()->allow_shared_inbox ? ['identified', 'generic_inbox'] : ['identified'])->whereNotNull('email')
             ->whereDoesntHave('campaignRecipients')
             ->where(fn ($q) => $q->whereNull('win_tier')->orWhere('win_tier', 'A')) // only "Email now" (or not yet ranked); the gate below re-checks everything
-            ->orderByDesc('win_points')->orderByDesc('overall_score')->limit($limit * 3)->get(); // Win Ladder order: strongest evidence first
+            // highest chance of a reply first (measured by kind of evidence), then Win Ladder points, then score
+            ->orderByDesc('win_reply_chance')->orderByDesc('win_points')->orderByDesc('overall_score')->limit($limit * 3)->get();
 
         foreach ($leads as $lead) {
             if ($out['planned'] + $out['pending_approval'] >= $limit) {
@@ -288,7 +289,11 @@ class SequenceEngine
             ->whereHas('campaign', fn ($q) => $q->where('is_autopilot', true))
             ->where(fn ($q) => $q->whereNull('scheduled_at')->orWhere('scheduled_at', '<=', now()));
         $followUps = $base()->where('sequence_step', '>', 1)->orderBy('sequence_step', 'desc')->orderBy('scheduled_at')->limit($limit * 10)->get();
-        $firsts = $base()->where('sequence_step', 1)->orderBy('scheduled_at')->limit($limit * 10)->get();
+        // Best chance of a reply first (hiring, a request, a big website gap), then oldest. Seen live (24 Nov): businesses
+        // that were hiring replied 10% of the time, small website gaps 1.5%, yet first e-mails went out oldest first.
+        $firsts = $base()->where('sequence_step', 1)
+            ->orderByDesc(Lead::select('win_reply_chance')->whereColumn('leads.id', 'campaign_recipients.lead_id')->limit(1))
+            ->orderBy('scheduled_at')->limit($limit * 10)->get();
 
         $tz = config('leadpilot.timezone');
         $startOfDay = now($tz)->startOfDay()->utc();

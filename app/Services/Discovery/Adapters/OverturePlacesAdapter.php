@@ -348,26 +348,32 @@ class OverturePlacesAdapter extends AbstractDiscoveryAdapter
                     $mapUrl = sprintf('https://explore.overturemaps.org/#16/%.5f/%.5f', (float) $r['lat'], (float) $r['lon']);
                     $category = (string) ($r['category'] ?? '');
 
-                    $up = $ingestor->upsertCompany([
-                        'name' => $r['name'],
-                        'website' => $website,
-                        'public_email' => $email,
-                        'public_phone' => $r['phone'] ?? null,
-                        'public_address' => $address ?: null,
-                        'city' => $cityName,
-                        'country' => $country,
-                        'industry' => $category !== '' ? ucwords(str_replace('_', ' ', $category)) : ($options['industry'] ?? null),
-                        'external_id' => $externalId,
-                        'source_url' => $mapUrl,
-                        'business_status' => $r['operating_status'] ?? null,
-                        'confidence' => (int) ($r['confidence'] ?? 0), // Overture existence score, 0-100
-                    ], $result);
-                    if (!$up['company']) {
-                        continue; // excluded by the ICP's rules (domain / name exclusions) — counted by the ingestor
+                    try {
+                        $up = $ingestor->upsertCompany([
+                            'name' => $r['name'],
+                            'website' => $website,
+                            'public_email' => $email,
+                            'public_phone' => $r['phone'] ?? null,
+                            'public_address' => $address ?: null,
+                            'city' => $cityName,
+                            'country' => $country,
+                            'industry' => $category !== '' ? ucwords(str_replace('_', ' ', $category)) : ($options['industry'] ?? null),
+                            'external_id' => $externalId,
+                            'source_url' => $mapUrl,
+                            'business_status' => $r['operating_status'] ?? null,
+                            'confidence' => (int) ($r['confidence'] ?? 0), // Overture existence score, 0-100
+                        ], $result);
+                        if (!$up['company']) {
+                            continue; // excluded by the ICP's rules (domain / name exclusions) — counted by the ingestor
+                        }
+                        $processed++;
+                        $lead = $ingestor->ensureLead($up['company'], array_filter(['email' => $email]), $result,
+                            $website ? ['web_redesign'] : ['web_dev'], $mapUrl, $externalId);
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        // one place the database refuses must not stop the search (seen live: "String data, right truncated")
+                        $result->addError('Skipped "' . mb_substr((string) $r['name'], 0, 60) . '": ' . mb_substr($e->getMessage(), 0, 140));
+                        continue;
                     }
-                    $processed++;
-                    $lead = $ingestor->ensureLead($up['company'], array_filter(['email' => $email]), $result,
-                        $website ? ['web_redesign'] : ['web_dev'], $mapUrl, $externalId);
                     $result->recordItem([
                         'company' => $r['name'], 'category' => $category, 'website' => $website, 'email' => $email, 'phone' => $r['phone'] ?? null,
                         'social' => $social, 'confidence' => (int) ($r['confidence'] ?? 0), 'dataset' => $r['dataset'] ?? null,
